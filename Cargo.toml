@@ -1,0 +1,10 @@
+[package]
+name = "mim"
+version = "0.1.0"
+authors = ["Aurelien Coet <aurelien.coet@outlook.com>"]
+edition = "2024"
+readme = "README.md"
+repository = "https://github.com/coetaur0/mim"
+license = "MIT"
+
+[dependencies]
