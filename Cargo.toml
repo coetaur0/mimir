@@ -8,4 +8,5 @@ repository = "https://github.com/coetaur0/mim"
 license = "MIT"
 
 [dependencies]
+ariadne = { version = "0.5.1", features = ["auto-color"] }
 logos = "0.15.0"

@@ -2,12 +2,10 @@
 
 use std::{collections::HashMap, fmt, result};
 
+use ariadne::{Color, Label, Report, ReportKind, Source};
 use logos::{Lexer, Logos};
 
-use crate::{
-    ast::*,
-    source::{Span, Spanned},
-};
+use crate::{ast::*, source::*};
 
 /// Parse a Mim module.
 pub fn parse(src: &str) -> Result<Module> {
@@ -31,6 +29,65 @@ pub enum Error {
         found: Spanned<Token>,
     },
     DuplicateFunction(Spanned<String>),
+}
+
+impl Diagnostic for Error {
+    fn print(&self, path: &str, contents: &str) {
+        match self {
+            Error::UnclosedDelimiter {
+                open,
+                expected,
+                found,
+            } => Report::build(ReportKind::Error, (path, found.span.clone()))
+                .with_code(1)
+                .with_message("Unclosed delimiter.")
+                .with_label(
+                    Label::new((path, open.span.clone()))
+                        .with_message(format!(
+                            "the opening delimiter '{}' is missing a matching closing delimiter",
+                            open.item
+                        ))
+                        .with_color(Color::Blue),
+                )
+                .with_label(
+                    Label::new((path, found.span.clone()))
+                        .with_message(format!(
+                            "{} was expected, but {} was found instead.",
+                            expected, found.item
+                        ))
+                        .with_color(Color::Red),
+                ),
+            Error::UnexpectedToken { expected, found } => {
+                Report::build(ReportKind::Error, (path, found.span.clone()))
+                    .with_code(2)
+                    .with_message("Unexpected token.")
+                    .with_label(
+                        Label::new((path, found.span.clone()))
+                            .with_message(format!(
+                                "{} was expected, but {} was found instead.",
+                                expected, found.item
+                            ))
+                            .with_color(Color::Red),
+                    )
+            }
+            Error::DuplicateFunction(name) => {
+                Report::build(ReportKind::Error, (path, name.span.clone()))
+                    .with_code(3)
+                    .with_message("Duplicate function declaration.")
+                    .with_label(
+                        Label::new((path, name.span.clone()))
+                            .with_message(format!(
+                                "a function named '{}' is already defined in the module.",
+                                name.item
+                            ))
+                            .with_color(Color::Red),
+                    )
+            }
+        }
+        .finish()
+        .eprint((path, Source::from(contents)))
+        .unwrap()
+    }
 }
 
 /// A lexical token.

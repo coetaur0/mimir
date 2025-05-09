@@ -18,3 +18,9 @@ impl<T> Spanned<T> {
         Spanned { item, span }
     }
 }
+
+/// A compiler diagnostic reporting an issue in some source.
+pub trait Diagnostic {
+    /// Print the diagnostic, given some source `path` and `contents`.
+    fn print(&self, path: &str, contents: &str);
+}
