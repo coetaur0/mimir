@@ -8,3 +8,4 @@ repository = "https://github.com/coetaur0/mim"
 license = "MIT"
 
 [dependencies]
+logos = "0.15.0"
