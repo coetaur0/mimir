@@ -37,14 +37,8 @@ pub struct Block {
 /// A statement.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Stmt {
-    Let {
-        variable: Local,
-        value: Option<Spanned<Expr>>,
-    },
-    Assign {
-        target: Spanned<Expr>,
-        value: Spanned<Expr>,
-    },
+    Let(Local, Option<Spanned<Expr>>),
+    Assign(Spanned<Expr>, Spanned<Expr>),
     Return(Spanned<Expr>),
     Expr(Expr),
 }
@@ -52,23 +46,10 @@ pub enum Stmt {
 /// An expression.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Expr {
-    If {
-        cond: Box<Spanned<Self>>,
-        then: Box<Spanned<Block>>,
-        els: Box<Spanned<Self>>,
-    },
-    Call {
-        callee: Box<Spanned<Self>>,
-        args: Vec<Spanned<Self>>,
-    },
-    Borrow {
-        mutable: bool,
-        expr: Box<Spanned<Self>>,
-    },
-    Field {
-        expr: Box<Spanned<Self>>,
-        index: Spanned<usize>,
-    },
+    If(Box<Spanned<Self>>, Box<Spanned<Block>>, Box<Spanned<Self>>),
+    Call(Box<Spanned<Self>>, Vec<Spanned<Self>>),
+    Borrow(bool, Box<Spanned<Self>>),
+    Field(Box<Spanned<Self>>, Spanned<usize>),
     Deref(Box<Spanned<Self>>),
     Tuple(Vec<Spanned<Self>>),
     Block(Box<Block>),
@@ -80,15 +61,8 @@ pub enum Expr {
 /// A type expression.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Type {
-    Fn {
-        params: Vec<Spanned<Self>>,
-        result: Box<Spanned<Self>>,
-    },
-    Ref {
-        origin: Option<Spanned<String>>,
-        mutable: bool,
-        ty: Box<Spanned<Self>>,
-    },
+    Fn(Vec<Spanned<Self>>, Box<Spanned<Self>>),
+    Ref(Option<Spanned<String>>, bool, Box<Spanned<Self>>),
     Tuple(Vec<Spanned<Self>>),
     I32,
     Bool,

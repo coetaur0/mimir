@@ -367,10 +367,7 @@ impl<'src> Parser<'src> {
             ty.span.end
         };
         Ok(Spanned::new(
-            Stmt::Let {
-                variable: Local { mutable, name, ty },
-                value,
-            },
+            Stmt::Let(Local { mutable, name, ty }, value),
             start..end,
         ))
     }
@@ -397,13 +394,7 @@ impl<'src> Parser<'src> {
             )? {
                 Some(value) => {
                     let span = expr.span.start..value.span.end;
-                    Spanned::new(
-                        Stmt::Assign {
-                            target: expr,
-                            value,
-                        },
-                        span,
-                    )
+                    Spanned::new(Stmt::Assign(expr, value), span)
                 }
                 None => Spanned::new(Stmt::Expr(expr.item), expr.span),
             },
@@ -434,13 +425,7 @@ impl<'src> Parser<'src> {
                         Token::RParen,
                     )?;
                     let span = expr.span.start..args.span.end;
-                    expr = Spanned::new(
-                        Expr::Call {
-                            callee: Box::new(expr),
-                            args: args.item,
-                        },
-                        span,
-                    );
+                    expr = Spanned::new(Expr::Call(Box::new(expr), args.item), span);
                 }
                 Token::Dot => {
                     self.advance();
@@ -449,10 +434,7 @@ impl<'src> Parser<'src> {
                         Ok(idx) => {
                             let span = expr.span.start..index.span.end;
                             expr = Spanned::new(
-                                Expr::Field {
-                                    expr: Box::new(expr),
-                                    index: Spanned::new(idx, index.span),
-                                },
+                                Expr::Field(Box::new(expr), Spanned::new(idx, index.span)),
                                 span,
                             );
                         }
@@ -510,11 +492,7 @@ impl<'src> Parser<'src> {
         };
         let span = start..els.span.end;
         Ok(Spanned::new(
-            Expr::If {
-                cond: Box::new(cond),
-                then: Box::new(then),
-                els: Box::new(els),
-            },
+            Expr::If(Box::new(cond), Box::new(then), Box::new(els)),
             span,
         ))
     }
@@ -539,13 +517,7 @@ impl<'src> Parser<'src> {
         let mutable = self.mutable()?;
         let expr = self.expr()?;
         let span = start..expr.span.end;
-        Ok(Spanned::new(
-            Expr::Borrow {
-                mutable,
-                expr: Box::new(expr),
-            },
-            span,
-        ))
+        Ok(Spanned::new(Expr::Borrow(mutable, Box::new(expr)), span))
     }
 
     /// Parse an integer literal.
@@ -588,13 +560,7 @@ impl<'src> Parser<'src> {
         self.expect(Token::Arrow)?;
         let result = self.ty()?;
         let span = start..result.span.end;
-        Ok(Spanned::new(
-            Type::Fn {
-                params,
-                result: Box::new(result),
-            },
-            span,
-        ))
+        Ok(Spanned::new(Type::Fn(params, Box::new(result)), span))
     }
 
     /// Parse a reference type expression.
@@ -604,14 +570,7 @@ impl<'src> Parser<'src> {
         let mutable = self.mutable()?;
         let ty = self.ty()?;
         let span = start..ty.span.end;
-        Ok(Spanned::new(
-            Type::Ref {
-                origin,
-                mutable,
-                ty: Box::new(ty),
-            },
-            span,
-        ))
+        Ok(Spanned::new(Type::Ref(origin, mutable, Box::new(ty)), span))
     }
 
     /// Parse a parenthesized or tuple type expression.

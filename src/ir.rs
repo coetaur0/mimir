@@ -39,25 +39,10 @@ pub type Block = Vec<Spanned<Instruction>>;
 /// An IR instruction.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Instruction {
-    If {
-        cond: Spanned<Operand>,
-        then: Spanned<Block>,
-        els: Spanned<Block>,
-    },
-    Call {
-        target: Spanned<Place>,
-        callee: Spanned<Place>,
-        args: Vec<Spanned<Operand>>,
-    },
-    Borrow {
-        target: Spanned<Place>,
-        mutable: bool,
-        place: Spanned<Place>,
-    },
-    Value {
-        target: Spanned<Place>,
-        operand: Spanned<Operand>,
-    },
+    If(Spanned<Operand>, Spanned<Block>, Spanned<Block>),
+    Call(Spanned<Place>, Spanned<Place>, Vec<Spanned<Operand>>),
+    Borrow(Spanned<Place>, bool, Spanned<Place>),
+    Value(Spanned<Place>, Spanned<Operand>),
     Return,
 }
 
@@ -73,10 +58,7 @@ pub enum Operand {
 /// A place expression.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Place {
-    Field {
-        place: Box<Spanned<Self>>,
-        index: Spanned<usize>,
-    },
+    Field(Box<Spanned<Self>>, Spanned<usize>),
     Deref(Box<Spanned<Self>>),
     Global(String),
     Local(LocalId),
@@ -85,15 +67,8 @@ pub enum Place {
 /// A type expression.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Type {
-    Fn {
-        params: Vec<Spanned<Self>>,
-        result: Box<Spanned<Self>>,
-    },
-    Ref {
-        origin: Option<OriginId>,
-        mutable: bool,
-        ty: Box<Spanned<Self>>,
-    },
+    Fn(Vec<Spanned<Self>>, Box<Spanned<Self>>),
+    Ref(Option<OriginId>, bool, Box<Spanned<Self>>),
     Tuple(Vec<Spanned<Self>>),
     I32,
     Bool,
