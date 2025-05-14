@@ -25,6 +25,19 @@ pub struct Function {
     pub body: Spanned<Block>,
 }
 
+impl Function {
+    /// Get the type of a function.
+    pub fn ty(&self) -> Spanned<Type> {
+        let params: Vec<Spanned<Type>> = self.locals[1..self.param_count + 1]
+            .iter()
+            .map(|p| p.ty.clone())
+            .collect();
+        let result = self.locals[0].ty.clone();
+        let span = params.first().map_or(result.span.start, |ty| ty.span.start)..result.span.end;
+        Spanned::new(Type::Fn(params, Box::new(result)), span)
+    }
+}
+
 /// A function parameter or local variable declaration.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Local {

@@ -13,10 +13,10 @@ pub fn parse(src: &str) -> Result<Module> {
     parser.module()
 }
 
-/// A parse result.
+/// A parsing result.
 pub type Result<T> = result::Result<T, Vec<Error>>;
 
-/// A parse error.
+/// A parsing error.
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error {
     UnclosedDelimiter {
