@@ -54,7 +54,7 @@ fn lower_function(function: &ast::Function) -> Result<ir::Function> {
     }
 
     if errors.is_empty() {
-        let body = lower_block(&mut local_ids, &mut locals, &function.body)?;
+        let body = lower_block(&origin_ids, &mut local_ids, &mut locals, &function.body)?;
         Ok(ir::Function {
             origins,
             locals,
@@ -171,6 +171,7 @@ fn lower_tuple_ty(
 
 /// Lower an AST block expression to its IR representation.
 fn lower_block(
+    origin_ids: &HashMap<String, OriginId>,
     local_ids: &mut HashMap<String, LocalId>,
     locals: &mut [Local],
     block: &Spanned<ast::Block>,
