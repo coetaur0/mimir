@@ -19,7 +19,7 @@ pub struct Module {
 /// A function declaration.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Function {
-    pub origins: Vec<Option<String>>,
+    pub origins: Vec<String>,
     pub locals: Vec<Local>,
     pub param_count: usize,
     pub body: Spanned<Block>,
