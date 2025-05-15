@@ -28,12 +28,22 @@ pub struct Function {
 impl Function {
     /// Get the type of a function.
     pub fn ty(&self) -> typing::Type {
-        let params: Vec<typing::Type> = self.locals[1..self.param_count + 1]
-            .iter()
-            .map(|p| (&p.ty).into())
-            .collect();
-        let result = (&self.locals[0].ty).into();
+        let params: Vec<typing::Type> = self.param_tys().iter().map(|ty| (*ty).into()).collect();
+        let result = self.result_ty().into();
         typing::Type::Fn(params, Box::new(result))
+    }
+
+    /// Get the type annotations on a function's parameters.
+    pub fn param_tys(&self) -> Vec<&Spanned<Type>> {
+        self.locals[1..self.param_count + 1]
+            .iter()
+            .map(|p| &p.ty)
+            .collect()
+    }
+
+    /// Get the return type annotation of a function.
+    pub fn result_ty(&self) -> &Spanned<Type> {
+        &self.locals[0].ty
     }
 }
 
