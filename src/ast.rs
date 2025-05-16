@@ -14,14 +14,14 @@ pub struct Module {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Function {
     pub origins: Vec<Spanned<String>>,
-    pub params: Vec<Local>,
+    pub params: Vec<Parameter>,
     pub result: Spanned<Type>,
-    pub body: Spanned<Block>,
+    pub body: Block,
 }
 
-/// A function parameter or local variable.
+/// A function parameter.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Local {
+pub struct Parameter {
     pub mutable: bool,
     pub name: Spanned<String>,
     pub ty: Spanned<Type>,
@@ -37,7 +37,12 @@ pub struct Block {
 /// A statement.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Stmt {
-    Let(Local, Option<Spanned<Expr>>),
+    Let(
+        bool,
+        Spanned<String>,
+        Option<Spanned<Type>>,
+        Option<Spanned<Expr>>,
+    ),
     Assign(Spanned<Expr>, Spanned<Expr>),
     Return(Spanned<Expr>),
     Expr(Expr),

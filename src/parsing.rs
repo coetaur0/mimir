@@ -266,7 +266,7 @@ impl<'src> Parser<'src> {
         } else {
             Spanned::new(Type::Tuple(Vec::new()), self.span())
         };
-        let body = self.block()?;
+        let body = self.block()?.item;
         Ok((
             name,
             Function {
@@ -279,12 +279,12 @@ impl<'src> Parser<'src> {
     }
 
     /// Parse a function parameter.
-    fn parameter(&mut self) -> Result<Local> {
+    fn parameter(&mut self) -> Result<Parameter> {
         let mutable = self.mutable()?;
         let name = self.expect(Token::Name)?;
         self.expect(Token::Colon)?;
         let ty = self.ty()?;
-        Ok(Local { mutable, name, ty })
+        Ok(Parameter { mutable, name, ty })
     }
 
     /// Parse a block expression.
@@ -351,8 +351,14 @@ impl<'src> Parser<'src> {
         let start = self.consume().span.start;
         let mutable = self.mutable()?;
         let name = self.expect(Token::Name)?;
-        self.expect(Token::Colon)?;
-        let ty = self.ty()?;
+        let ty = self.optional(
+            |p| {
+                p.advance();
+                Ok(Some(p.ty()?))
+            },
+            Token::Colon,
+            None,
+        )?;
         let value = self.optional(
             |p| {
                 p.advance();
@@ -363,11 +369,13 @@ impl<'src> Parser<'src> {
         )?;
         let end = if let Some(value) = &value {
             value.span.end
-        } else {
+        } else if let Some(ty) = &ty {
             ty.span.end
+        } else {
+            name.span.end
         };
         Ok(Spanned::new(
-            Stmt::Let(Local { mutable, name, ty }, value),
+            Stmt::Let(mutable, name, ty, value),
             start..end,
         ))
     }

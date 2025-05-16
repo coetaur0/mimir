@@ -22,7 +22,7 @@ pub struct Function {
     pub origins: Vec<String>,
     pub locals: Vec<Local>,
     pub param_count: usize,
-    pub body: Spanned<Block>,
+    pub body: Block,
 }
 
 impl Function {
@@ -61,7 +61,7 @@ pub type Block = Vec<Spanned<Instruction>>;
 /// An IR instruction.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Instruction {
-    If(Spanned<Operand>, Spanned<Block>, Spanned<Block>),
+    If(Spanned<Operand>, Block, Block),
     Call(Spanned<Place>, Spanned<Place>, Vec<Spanned<Operand>>),
     Borrow(Spanned<Place>, bool, Spanned<Place>),
     Value(Spanned<Place>, Spanned<Operand>),

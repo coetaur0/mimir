@@ -34,12 +34,19 @@ fn functions() {
 
 #[test]
 fn statements() {
-    check_ok("fn main() { let x: i32 = 42; let b: bool; b = true; g(); return b }");
+    check_ok("fn main() { let x: i32 = 42; let b: bool; b = true; let c = 1; g(); return b }");
     check_err(
         "fn main() { let x i32; }",
-        vec![Error::UnexpectedToken {
-            expected: "a ':'".to_string(),
-            found: Spanned::new(Token::I32Kw, 18..21),
+        vec![Error::UnclosedDelimiter {
+            open: Spanned {
+                item: "{".to_string(),
+                span: 10..11,
+            },
+            expected: Token::RBrace,
+            found: Spanned {
+                item: Token::I32Kw,
+                span: 18..21,
+            },
         }],
     );
     check_err(

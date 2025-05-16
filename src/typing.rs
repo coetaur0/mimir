@@ -180,9 +180,9 @@ impl<'mdl> TypeChecker<'mdl> {
     }
 
     /// Type check a block of instructions.
-    fn block(&self, block: &Spanned<Block>) -> Result<()> {
+    fn block(&self, block: &Block) -> Result<()> {
         let mut errors = Vec::new();
-        for instr in &block.item {
+        for instr in block {
             self.instr(instr).unwrap_or_else(|errs| errors.extend(errs));
         }
         if !errors.is_empty() {
@@ -194,21 +194,18 @@ impl<'mdl> TypeChecker<'mdl> {
     /// Type check an instruction.
     fn instr(&self, instr: &Spanned<Instruction>) -> Result<()> {
         match &instr.item {
-            Instruction::If(cond, then, els) => self.conditional(cond, then, els),
-            Instruction::Call(target, callee, args) => self.call(target, callee, args),
-            Instruction::Borrow(target, mutable, place) => self.borrow(target, *mutable, place),
-            Instruction::Value(target, operand) => self.value(target, operand),
+            Instruction::If(cond, then, els) => self.conditional_instr(cond, then, els),
+            Instruction::Call(target, callee, args) => self.call_instr(target, callee, args),
+            Instruction::Borrow(target, mutable, place) => {
+                self.borrow_instr(target, *mutable, place)
+            }
+            Instruction::Value(target, operand) => self.value_instr(target, operand),
             Instruction::Return => Ok(()),
         }
     }
 
     /// Type check a conditional instruction.
-    fn conditional(
-        &self,
-        cond: &Spanned<Operand>,
-        then: &Spanned<Block>,
-        els: &Spanned<Block>,
-    ) -> Result<()> {
+    fn conditional_instr(&self, cond: &Spanned<Operand>, then: &Block, els: &Block) -> Result<()> {
         match self.operand(cond)? {
             Type::Bool => {
                 self.block(then)?;
@@ -223,7 +220,7 @@ impl<'mdl> TypeChecker<'mdl> {
     }
 
     /// Type check a call instruction.
-    fn call(
+    fn call_instr(
         &self,
         target: &Spanned<Place>,
         callee: &Spanned<Place>,
@@ -271,7 +268,12 @@ impl<'mdl> TypeChecker<'mdl> {
     }
 
     /// Type check a borrow instruction.
-    fn borrow(&self, target: &Spanned<Place>, mutable: bool, place: &Spanned<Place>) -> Result<()> {
+    fn borrow_instr(
+        &self,
+        target: &Spanned<Place>,
+        mutable: bool,
+        place: &Spanned<Place>,
+    ) -> Result<()> {
         let (_, target_ty) = self.place(target)?;
         let (place_mut, place_ty) = self.place(place)?;
         let ref_ty = Type::Ref(None, mutable, Box::new(place_ty));
@@ -288,7 +290,7 @@ impl<'mdl> TypeChecker<'mdl> {
     }
 
     /// Type check an assignment instruction.
-    fn value(&self, target: &Spanned<Place>, value: &Spanned<Operand>) -> Result<()> {
+    fn value_instr(&self, target: &Spanned<Place>, value: &Spanned<Operand>) -> Result<()> {
         let (_, target_ty) = self.place(target)?;
         let value_ty = self.operand(value)?;
         if !value_ty.subtype_of(&target_ty) {
@@ -304,7 +306,7 @@ impl<'mdl> TypeChecker<'mdl> {
     /// Type check an instruction operand.
     fn operand(&self, operand: &Spanned<Operand>) -> Result<Type> {
         match &operand.item {
-            Operand::Tuple(elems) => self.tuple(elems),
+            Operand::Tuple(elems) => self.tuple_operand(elems),
             Operand::Place(place) => Ok(self
                 .place(&Spanned::new(place.clone(), operand.span.clone()))?
                 .1),
@@ -314,7 +316,7 @@ impl<'mdl> TypeChecker<'mdl> {
     }
 
     /// Type check a tuple operand.
-    fn tuple(&self, elems: &Vec<Spanned<Operand>>) -> Result<Type> {
+    fn tuple_operand(&self, elems: &Vec<Spanned<Operand>>) -> Result<Type> {
         let mut types = Vec::new();
         let mut errors = Vec::new();
         for op in elems {
@@ -332,15 +334,15 @@ impl<'mdl> TypeChecker<'mdl> {
     /// Type check a place expression.
     fn place(&self, place: &Spanned<Place>) -> Result<(bool, Type)> {
         match &place.item {
-            Place::Field(place, index) => self.index(place, index),
-            Place::Deref(place) => self.deref(place),
-            Place::Global(name) => self.global(name, &place.span),
-            Place::Local(id) => self.local(*id, &place.span),
+            Place::Field(place, index) => self.index_place(place, index),
+            Place::Deref(place) => self.deref_place(place),
+            Place::Global(name) => self.global_place(name, &place.span),
+            Place::Local(id) => self.local_place(*id, &place.span),
         }
     }
 
     /// Type check a place index expression.
-    fn index(&self, place: &Spanned<Place>, index: &Spanned<usize>) -> Result<(bool, Type)> {
+    fn index_place(&self, place: &Spanned<Place>, index: &Spanned<usize>) -> Result<(bool, Type)> {
         let (is_mut, ty) = self.place(place)?;
         match ty {
             Type::Tuple(elems) if index.item < elems.len() => {
@@ -354,7 +356,7 @@ impl<'mdl> TypeChecker<'mdl> {
     }
 
     /// Type check a place dereference expression.
-    fn deref(&self, place: &Spanned<Place>) -> Result<(bool, Type)> {
+    fn deref_place(&self, place: &Spanned<Place>) -> Result<(bool, Type)> {
         let (_, ty) = self.place(place)?;
         match ty {
             Type::Ref(_, is_mut, ty) => Ok((is_mut, *ty)),
@@ -366,7 +368,7 @@ impl<'mdl> TypeChecker<'mdl> {
     }
 
     /// Type check a global place expression.
-    fn global(&self, name: &str, span: &Span) -> Result<(bool, Type)> {
+    fn global_place(&self, name: &str, span: &Span) -> Result<(bool, Type)> {
         self.module.functions.get(name).map_or(
             Err(vec![Error::UndefinedGlobal(Spanned::new(
                 name.to_string(),
@@ -377,7 +379,7 @@ impl<'mdl> TypeChecker<'mdl> {
     }
 
     /// Type check a local place expression.
-    fn local(&self, id: usize, span: &Span) -> Result<(bool, Type)> {
+    fn local_place(&self, id: usize, span: &Span) -> Result<(bool, Type)> {
         if id >= self.locals.len() {
             return Err(vec![Error::UndefinedLocal(span.clone())]);
         }
