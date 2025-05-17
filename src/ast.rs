@@ -19,6 +19,24 @@ pub struct Function {
     pub body: Block,
 }
 
+impl Function {
+    /// Get the function's type.
+    pub fn ty(&self) -> Spanned<Type> {
+        let span = if self.params.is_empty() {
+            self.result.span.start
+        } else {
+            self.params[0].ty.span.start
+        }..self.result.span.end;
+        Spanned::new(
+            Type::Fn(
+                self.params.iter().map(|p| p.ty.clone()).collect(),
+                Box::new(self.result.clone()),
+            ),
+            span,
+        )
+    }
+}
+
 /// A function parameter.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Parameter {
