@@ -51,12 +51,12 @@ impl Function {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Local {
     pub mutable: bool,
-    pub name: Option<Spanned<String>>,
+    pub name: Option<String>,
     pub ty: Spanned<Type>,
 }
 
 /// A block of instructions.
-pub type Block = Vec<Spanned<Instruction>>;
+pub type Block = Vec<Instruction>;
 
 /// An IR instruction.
 #[derive(Clone, Debug, Eq, PartialEq)]

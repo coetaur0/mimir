@@ -192,8 +192,8 @@ impl<'mdl> TypeChecker<'mdl> {
     }
 
     /// Type check an instruction.
-    fn instr(&self, instr: &Spanned<Instruction>) -> Result<()> {
-        match &instr.item {
+    fn instr(&self, instr: &Instruction) -> Result<()> {
+        match &instr {
             Instruction::If(cond, then, els) => self.conditional_instr(cond, then, els),
             Instruction::Call(target, callee, args) => self.call_instr(target, callee, args),
             Instruction::Borrow(target, mutable, place) => {

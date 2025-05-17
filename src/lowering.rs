@@ -46,6 +46,12 @@ pub enum Error {
     UndefinedOrigin(Spanned<String>),
     DuplicateParameter(Spanned<String>),
     UndefinedType(Spanned<String>),
+    UndefinedGlobal(Spanned<String>),
+    InvalidCallee(Span),
+    InvalidIndex(Span),
+    InvalidDeref(Span),
+    UnassignableExpr(Span),
+    UndefinedVariable(Spanned<String>),
 }
 
 /// An AST to IR lowerer.
@@ -140,9 +146,9 @@ impl<'m> Lowerer<'m> {
             let (mut instrs, op) = self.block(&function.body)?;
             let span = op.span.clone();
             // Assign the body's result to the function's return local in the IR.
-            instrs.push(Spanned::new(
-                Instruction::Value(Spanned::new(Place::Local(0), span.clone()), op),
-                span,
+            instrs.push(Instruction::Value(
+                Spanned::new(Place::Local(0), span.clone()),
+                op,
             ));
             Ok(ir::Function {
                 origins,
@@ -160,7 +166,7 @@ impl<'m> Lowerer<'m> {
         let ty = self.ty(&param.ty)?;
         Ok(ir::Local {
             mutable: param.mutable,
-            name: Some(param.name.clone()),
+            name: Some(param.name.item.clone()),
             ty,
         })
     }
@@ -250,10 +256,7 @@ impl<'m> Lowerer<'m> {
     }
 
     /// Lower an AST block expression to its corresponding IR instructions and operand.
-    fn block(
-        &mut self,
-        block: &'m ast::Block,
-    ) -> Result<(Vec<Spanned<Instruction>>, Spanned<Operand>)> {
+    fn block(&mut self, block: &'m ast::Block) -> Result<(Vec<Instruction>, Spanned<Operand>)> {
         self.local_ids.push_scope(true);
         let mut instrs = Vec::new();
         let mut errors = Vec::new();
@@ -279,12 +282,12 @@ impl<'m> Lowerer<'m> {
     }
 
     /// Lower an AST statement to a sequence of IR instructions.
-    fn stmt(&mut self, stmt: &'m Spanned<Stmt>) -> Result<Vec<Spanned<Instruction>>> {
+    fn stmt(&mut self, stmt: &'m Spanned<Stmt>) -> Result<Vec<Instruction>> {
         match &stmt.item {
             Stmt::Let(mutable, name, ty, value) => self.let_stmt(*mutable, name, ty, value),
-            Stmt::Assign(lhs, rhs) => todo!(),
-            Stmt::Return(value) => todo!(),
-            Stmt::Expr(expr) => todo!(),
+            Stmt::Assign(lhs, rhs) => self.assign_stmt(lhs, rhs),
+            Stmt::Return(value) => self.return_stmt(value),
+            Stmt::Expr(expr) => Ok(self.expr(expr, &stmt.span)?.0),
         }
     }
 
@@ -295,9 +298,7 @@ impl<'m> Lowerer<'m> {
         name: &'m Spanned<String>,
         ty: &Option<Spanned<ast::Type>>,
         value: &'m Option<Spanned<Expr>>,
-    ) -> Result<Vec<Spanned<Instruction>>> {
-        let local_id = self.locals.len();
-
+    ) -> Result<Vec<Instruction>> {
         let ir_type = if let Some(ty) = &ty {
             Some(self.ty(ty)?)
         } else {
@@ -306,12 +307,9 @@ impl<'m> Lowerer<'m> {
 
         let (instrs, operand) = if let Some(expr) = value {
             let (mut i, o) = self.expr(&expr.item, &expr.span)?;
-            i.push(Spanned::new(
-                Instruction::Value(
-                    Spanned::new(Place::Local(local_id), expr.span.clone()),
-                    o.clone(),
-                ),
-                expr.span.clone(),
+            i.push(Instruction::Value(
+                Spanned::new(Place::Local(self.locals.len()), expr.span.clone()),
+                o.clone(),
             ));
             (i, Some(o))
         } else {
@@ -327,18 +325,48 @@ impl<'m> Lowerer<'m> {
             Ok,
         ) {
             Ok(ty) => {
-                self.local_ids.insert(&name.item, local_id);
-                self.locals.push(Local {
-                    mutable,
-                    name: Some(name.clone()),
-                    ty,
-                });
+                self.add_local(mutable, Some(&name.item), ty);
                 Ok(instrs)
             }
-            // If the let statement neither contains a type annotation, nor a default value, we have
+            // If the let statement neither contains a type annotation nor a default value, we have
             // an error.
             Err(errors) => Err(errors),
         }
+    }
+
+    /// Lower an assignment statement to a sequence of IR instructions.
+    fn assign_stmt(
+        &mut self,
+        lhs: &'m Spanned<Expr>,
+        rhs: &'m Spanned<Expr>,
+    ) -> Result<Vec<Instruction>> {
+        let (mut instrs, r_operand) = self.expr(&rhs.item, &rhs.span)?;
+        let (l_instrs, l_operand) = self.expr(&lhs.item, &lhs.span)?;
+        match l_operand.item {
+            Operand::Place(p) => match p {
+                Place::Global(_) => Err(vec![Error::UnassignableExpr(lhs.span.clone())]),
+                _ => {
+                    instrs.extend(l_instrs);
+                    instrs.push(Instruction::Value(
+                        Spanned::new(p, lhs.span.clone()),
+                        r_operand,
+                    ));
+                    Ok(instrs)
+                }
+            },
+            _ => Err(vec![Error::UnassignableExpr(lhs.span.clone())]),
+        }
+    }
+
+    /// Lower a return statement to a sequence of IR instructions.
+    fn return_stmt(&mut self, value: &'m Spanned<Expr>) -> Result<Vec<Instruction>> {
+        let (mut instrs, operand) = self.expr(&value.item, &value.span)?;
+        instrs.push(Instruction::Value(
+            Spanned::new(Place::Local(0), value.span.clone()),
+            operand,
+        ));
+        instrs.push(Instruction::Return);
+        Ok(instrs)
     }
 
     /// Lower an AST expression to a sequence of IR instructions and an operand representing its
@@ -347,14 +375,229 @@ impl<'m> Lowerer<'m> {
         &mut self,
         expr: &'m Expr,
         span: &Span,
-    ) -> Result<(Vec<Spanned<Instruction>>, Spanned<Operand>)> {
+    ) -> Result<(Vec<Instruction>, Spanned<Operand>)> {
+        match &expr {
+            Expr::If(cond, then, els) => self.if_expr(cond, then, els),
+            Expr::Call(callee, args) => self.call_expr(callee, args, span),
+            Expr::Borrow(mutable, e) => self.borrow_expr(*mutable, e, span),
+            Expr::Field(e, index) => self.field_expr(e, index, span),
+            Expr::Deref(e) => self.deref_expr(e, span),
+            Expr::Tuple(elems) => self.tuple_expr(elems, span),
+            Expr::Block(block) => self.block(block),
+            Expr::Name(name) => self.name_expr(name, span),
+            Expr::Int(value) => Ok((Vec::new(), Spanned::new(Operand::Int(*value), span.clone()))),
+            Expr::Bool(value) => Ok((
+                Vec::new(),
+                Spanned::new(Operand::Bool(*value), span.clone()),
+            )),
+        }
+    }
+
+    /// Lower a conditional expression to a sequence of IR instructions and an operand.
+    fn if_expr(
+        &mut self,
+        cond: &'m Spanned<Expr>,
+        then: &'m Spanned<ast::Block>,
+        els: &'m Spanned<Expr>,
+    ) -> Result<(Vec<Instruction>, Spanned<Operand>)> {
         todo!()
+    }
+
+    /// Lower a call expression to a sequence of IR instructions and an operand.
+    fn call_expr(
+        &mut self,
+        callee: &'m Spanned<Expr>,
+        args: &'m [Spanned<Expr>],
+        span: &Span,
+    ) -> Result<(Vec<Instruction>, Spanned<Operand>)> {
+        let (mut instrs, place, ty) = self.place_expr(callee)?;
+
+        let mut arg_ops = Vec::new();
+        for arg in args {
+            match self.expr(&arg.item, &arg.span) {
+                Ok((i, o)) => {
+                    instrs.extend(i);
+                    arg_ops.push(o);
+                }
+                Err(errors) => return Err(errors),
+            }
+        }
+
+        let ty = match &ty.item {
+            ir::Type::Fn(_, result) => *result.clone(),
+            _ => return Err(vec![Error::InvalidCallee(callee.span.clone())]),
+        };
+        self.locals.push(Local {
+            mutable: true,
+            name: None,
+            ty,
+        });
+        instrs.push(Instruction::Call(
+            Spanned::new(Place::Local(self.locals.len() - 1), span.clone()),
+            place,
+            arg_ops,
+        ));
+        Ok((
+            instrs,
+            Spanned::new(
+                Operand::Place(Place::Local(self.locals.len() - 1)),
+                span.clone(),
+            ),
+        ))
+    }
+
+    /// Lower a borrow expression to a sequence of IR instructions and an operand.
+    fn borrow_expr(
+        &mut self,
+        mutable: bool,
+        expr: &'m Spanned<Expr>,
+        span: &Span,
+    ) -> Result<(Vec<Instruction>, Spanned<Operand>)> {
+        let (mut instrs, place, ty) = self.place_expr(expr)?;
+        self.locals.push(Local {
+            mutable: true,
+            name: None,
+            ty: Spanned::new(
+                ir::Type::Ref(None, mutable, Box::new(ty)),
+                place.span.clone(),
+            ),
+        });
+        instrs.push(Instruction::Borrow(
+            Spanned::new(Place::Local(self.locals.len() - 1), span.clone()),
+            mutable,
+            place,
+        ));
+        Ok((
+            instrs,
+            Spanned::new(
+                Operand::Place(Place::Local(self.locals.len())),
+                span.clone(),
+            ),
+        ))
+    }
+
+    /// Lower a field index expression to a sequence of IR instructions and an operand.
+    fn field_expr(
+        &mut self,
+        expr: &'m Spanned<Expr>,
+        index: &Spanned<usize>,
+        span: &Span,
+    ) -> Result<(Vec<Instruction>, Spanned<Operand>)> {
+        let (instrs, operand) = self.expr(&expr.item, &expr.span)?;
+        match operand.item {
+            Operand::Place(p) => Ok((
+                instrs,
+                Spanned::new(
+                    Operand::Place(Place::Field(
+                        Box::new(Spanned::new(p, expr.span.clone())),
+                        index.clone(),
+                    )),
+                    span.clone(),
+                ),
+            )),
+            _ => Err(vec![Error::InvalidIndex(span.clone())]),
+        }
+    }
+
+    /// Lower a dereference expression to a sequence of IR instructions and an operand.
+    fn deref_expr(
+        &mut self,
+        expr: &'m Spanned<Expr>,
+        span: &Span,
+    ) -> Result<(Vec<Instruction>, Spanned<Operand>)> {
+        let (instrs, operand) = self.expr(&expr.item, &expr.span)?;
+        match operand.item {
+            Operand::Place(p) => Ok((
+                instrs,
+                Spanned::new(
+                    Operand::Place(Place::Deref(Box::new(Spanned::new(p, expr.span.clone())))),
+                    span.clone(),
+                ),
+            )),
+            _ => Err(vec![Error::InvalidDeref(expr.span.clone())]),
+        }
+    }
+
+    /// Lower a tuple expression to a sequence of IR instructions and an operand.
+    fn tuple_expr(
+        &mut self,
+        elems: &'m [Spanned<Expr>],
+        span: &Span,
+    ) -> Result<(Vec<Instruction>, Spanned<Operand>)> {
+        let mut instrs = Vec::new();
+        let mut operands = Vec::new();
+        let mut errors = Vec::new();
+
+        for elem in elems {
+            self.expr(&elem.item, &elem.span).map_or_else(
+                |errs| errors.extend(errs),
+                |(i, o)| {
+                    instrs.extend(i);
+                    operands.push(o);
+                },
+            );
+        }
+
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+        Ok((instrs, Spanned::new(Operand::Tuple(operands), span.clone())))
+    }
+
+    /// Lower a name expression to a sequence of IR instructions and an operand.
+    fn name_expr(
+        &mut self,
+        name: &'m str,
+        span: &Span,
+    ) -> Result<(Vec<Instruction>, Spanned<Operand>)> {
+        match self.local_ids.get(name) {
+            Some(id) => Ok((
+                Vec::new(),
+                Spanned::new(Operand::Place(Place::Local(*id)), span.clone()),
+            )),
+            None => Err(vec![Error::UndefinedVariable(Spanned::new(
+                name.to_string(),
+                span.clone(),
+            ))]),
+        }
+    }
+
+    /// Lower an expression to a sequence of instructions and a place.
+    fn place_expr(
+        &mut self,
+        expr: &'m Spanned<Expr>,
+    ) -> Result<(Vec<Instruction>, Spanned<Place>, Spanned<ir::Type>)> {
+        let (mut instrs, operand) = self.expr(&expr.item, &expr.span)?;
+        let ty = self.operand_ty(&operand)?;
+        let place = match operand.item {
+            Operand::Place(p) => Spanned::new(p, operand.span),
+            _ => {
+                let span = operand.span.clone();
+                instrs.push(Instruction::Value(
+                    Spanned::new(Place::Local(self.locals.len()), span.clone()),
+                    operand,
+                ));
+                self.locals.push(Local {
+                    mutable: true,
+                    name: None,
+                    ty: ty.clone(),
+                });
+                Spanned::new(Place::Local(self.locals.len() - 1), span)
+            }
+        };
+        Ok((instrs, place, ty))
     }
 
     /// Get the IR type of an operand.
     fn operand_ty(&self, operand: &Spanned<Operand>) -> Result<Spanned<ir::Type>> {
         match &operand.item {
-            Operand::Tuple(elems) => todo!(),
+            Operand::Tuple(elems) => {
+                let mut tys = Vec::new();
+                for op in elems {
+                    tys.push(self.operand_ty(op)?);
+                }
+                Ok(Spanned::new(ir::Type::Tuple(tys), operand.span.clone()))
+            }
             Operand::Place(place) => self.place_ty(place, &operand.span),
             Operand::Int(_) => Ok(Spanned::new(ir::Type::I32, operand.span.clone())),
             Operand::Bool(_) => Ok(Spanned::new(ir::Type::Bool, operand.span.clone())),
@@ -363,7 +606,43 @@ impl<'m> Lowerer<'m> {
 
     /// Get the IR type of a place expression.
     fn place_ty(&self, place: &Place, span: &Span) -> Result<Spanned<ir::Type>> {
-        todo!()
+        match &place {
+            Place::Field(place, index) => match self.place_ty(&place.item, &place.span) {
+                Ok(Spanned {
+                    item: ir::Type::Tuple(tys),
+                    span: _,
+                }) if index.item < tys.len() => Ok(tys[index.item].clone()),
+                Ok(_) => Err(vec![Error::InvalidIndex(span.clone())]),
+                Err(errors) => Err(errors),
+            },
+            Place::Deref(place) => match self.place_ty(&place.item, &place.span) {
+                Ok(Spanned {
+                    item: ir::Type::Ref(_, _, ty),
+                    span: _,
+                }) => Ok(*ty.clone()),
+                Ok(_) => Err(vec![Error::InvalidDeref(span.clone())]),
+                Err(errors) => Err(errors),
+            },
+            Place::Global(name) => match self.globals.get(name.as_str()) {
+                Some(ty) => Ok(ty.clone()),
+                None => Err(vec![Error::UndefinedGlobal(Spanned::new(
+                    name.to_string(),
+                    span.clone(),
+                ))]),
+            },
+            Place::Local(id) => Ok(self.locals[*id].ty.clone()),
+        }
+    }
+
+    /// Create a new local with a given mutability, name and type.
+    fn add_local(&mut self, mutable: bool, name: Option<&'m str>, ty: Spanned<ir::Type>) {
+        let name = if let Some(name) = name {
+            self.local_ids.insert(&name, self.locals.len());
+            Some(name.to_string())
+        } else {
+            None
+        };
+        self.locals.push(Local { mutable, name, ty });
     }
 }
 
