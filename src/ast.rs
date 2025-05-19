@@ -20,7 +20,7 @@ pub struct Function {
 }
 
 impl Function {
-    /// Get the function's type.
+    /// Get the function's AST type.
     pub fn ty(&self) -> Spanned<Type> {
         let span = if self.params.is_empty() {
             self.result.span.start

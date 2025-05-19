@@ -1,9 +1,16 @@
-use mim::{parsing, source::Diagnostic};
+use mim::{lowering::lower, parsing, source::Diagnostic};
 
 fn main() {
-    let src = "fn f<'a>(r: &'a i32, mut x: i32) -> &'a i32 { let t: &(i32, i32); (*t).1 = 3; if true { return g() } else { (1, 3) }; r }";
+    let src = "fn f<'a>(a: &'a i32, b: &'a i32, c: bool) -> &'a i32 { if c { a } else { b } }";
     match parsing::parse(src) {
-        Ok(ir) => println!("{:#?}", ir),
+        Ok(ast) => match lower(&ast) {
+            Ok(ir) => println!("{:#?}", ir),
+            Err(errors) => {
+                for error in errors {
+                    println!("{:#?}", error);
+                }
+            }
+        },
         Err(errors) => {
             for error in errors {
                 error.print("input", src);

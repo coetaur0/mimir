@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::{source::Spanned, typing};
+use crate::source::Spanned;
 
 /// An origin identifier.
 pub type OriginId = usize;
@@ -25,33 +25,10 @@ pub struct Function {
     pub body: Block,
 }
 
-impl Function {
-    /// Get the type of a function.
-    pub fn ty(&self) -> typing::Type {
-        let params: Vec<typing::Type> = self.param_tys().iter().map(|ty| (*ty).into()).collect();
-        let result = self.result_ty().into();
-        typing::Type::Fn(params, Box::new(result))
-    }
-
-    /// Get the type annotations on a function's parameters.
-    pub fn param_tys(&self) -> Vec<&Spanned<Type>> {
-        self.locals[1..self.param_count + 1]
-            .iter()
-            .map(|p| &p.ty)
-            .collect()
-    }
-
-    /// Get the return type annotation of a function.
-    pub fn result_ty(&self) -> &Spanned<Type> {
-        &self.locals[0].ty
-    }
-}
-
 /// A function parameter or local variable declaration.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Local {
     pub mutable: bool,
-    pub name: Option<String>,
     pub ty: Spanned<Type>,
 }
 
