@@ -4,3 +4,4 @@ pub mod lowering;
 pub mod naming;
 pub mod parsing;
 pub mod source;
+pub mod typing;
