@@ -36,6 +36,7 @@ pub enum Error {
     InvalidCallee(Spanned<Type>),
     InvalidCondition(Spanned<Type>),
     InvalidDeref(Spanned<Type>),
+    OriginNeeded(Span),
     UnauthorizedBorrow(Span),
     UndefinedGlobal(Spanned<String>),
     UndefinedLocal(Span),
@@ -128,9 +129,17 @@ impl Diagnostic for Error {
                         .with_message(format!("cannot dereference a value of type {}.", ty.item))
                         .with_color(Color::Red),
                 ),
+            Error::OriginNeeded(span) => Report::build(ReportKind::Error, (path, span.clone()))
+                .with_code(20)
+                .with_message("No origin specified.")
+                .with_label(
+                    Label::new((path, span.clone()))
+                        .with_message("references in function signatures need to be annotated with their origin.")
+                        .with_color(Color::Red),
+                ),
             Error::UnauthorizedBorrow(span) => {
                 Report::build(ReportKind::Error, (path, span.clone()))
-                    .with_code(20)
+                    .with_code(21)
                     .with_message("Unauthorized borrow.")
                     .with_label(
                         Label::new((path, span.clone()))
@@ -140,7 +149,7 @@ impl Diagnostic for Error {
             }
             Error::UndefinedGlobal(name) => {
                 Report::build(ReportKind::Error, (path, name.span.clone()))
-                    .with_code(21)
+                    .with_code(22)
                     .with_message("Undefined function.")
                     .with_label(
                         Label::new((path, name.span.clone()))
@@ -149,7 +158,7 @@ impl Diagnostic for Error {
                     )
             }
             Error::UndefinedLocal(span) => Report::build(ReportKind::Error, (path, span.clone()))
-                .with_code(22)
+                .with_code(23)
                 .with_message("Undefined variable.")
                 .with_label(
                     Label::new((path, span.clone()))
@@ -157,7 +166,7 @@ impl Diagnostic for Error {
                         .with_color(Color::Red),
                 ),
             Error::UndefinedOrigin(span) => Report::build(ReportKind::Error, (path, span.clone()))
-                .with_code(23)
+                .with_code(24)
                 .with_message("Undefined origin.")
                 .with_label(
                     Label::new((path, span.clone()))
@@ -206,8 +215,8 @@ impl<'m> TypeChecker<'m> {
         self.locals = &function.locals;
         let mut errors = Vec::new();
 
-        for local in &function.locals {
-            self.ty(&local.ty)
+        for (i, local) in function.locals.iter().enumerate() {
+            self.ty(&local.ty, i <= function.param_count)
                 .unwrap_or_else(|errs| errors.extend(errs));
         }
         self.block(&function.body)
@@ -220,16 +229,19 @@ impl<'m> TypeChecker<'m> {
     }
 
     /// Check if a type is well-formed.
-    fn ty(&self, ty: &Spanned<Type>) -> Result<()> {
+    fn ty(&self, ty: &Spanned<Type>, with_origins: bool) -> Result<()> {
         match &ty.item {
             Type::Fn(params, result) => self.fn_ty(params, result),
             Type::Ref(origin, _, ty) => {
+                if with_origins && origin.is_none() {
+                    return Err(vec![Error::OriginNeeded(ty.span.clone())]);
+                }
                 if origin.is_some() && origin.unwrap() >= self.n_origins {
                     return Err(vec![Error::UndefinedOrigin(ty.span.clone())]);
                 }
-                self.ty(ty)
+                self.ty(ty, with_origins)
             }
-            Type::Tuple(elems) => self.tuple_ty(elems),
+            Type::Tuple(elems) => self.tuple_ty(elems, with_origins),
             Type::I32 => Ok(()),
             Type::Bool => Ok(()),
         }
@@ -239,9 +251,10 @@ impl<'m> TypeChecker<'m> {
     fn fn_ty(&self, params: &Vec<Spanned<Type>>, result: &Spanned<Type>) -> Result<()> {
         let mut errors = Vec::new();
 
-        self.tuple_ty(params)
+        self.tuple_ty(params, false)
             .unwrap_or_else(|errs| errors.extend(errs));
-        self.ty(result).unwrap_or_else(|errs| errors.extend(errs));
+        self.ty(result, false)
+            .unwrap_or_else(|errs| errors.extend(errs));
 
         if !errors.is_empty() {
             return Err(errors);
@@ -250,11 +263,12 @@ impl<'m> TypeChecker<'m> {
     }
 
     /// Check if a tuple type is well-formed.
-    fn tuple_ty(&self, elems: &Vec<Spanned<Type>>) -> Result<()> {
+    fn tuple_ty(&self, elems: &Vec<Spanned<Type>>, with_origins: bool) -> Result<()> {
         let mut errors = Vec::new();
 
         for elem in elems {
-            self.ty(elem).unwrap_or_else(|errs| errors.extend(errs));
+            self.ty(elem, with_origins)
+                .unwrap_or_else(|errs| errors.extend(errs));
         }
 
         if !errors.is_empty() {

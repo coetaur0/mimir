@@ -405,7 +405,6 @@ impl<'m> Lowerer<'m> {
         let (l_instrs, l_op, _) = self.expr(&lhs.item, &lhs.span)?;
         match l_op.item {
             Operand::Place(Place::Local(id)) => {
-                println!("Its ok");
                 instrs.extend(l_instrs);
                 instrs.push(Instruction::Value(
                     Spanned::new(Place::Local(id), lhs.span.clone()),
