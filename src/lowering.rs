@@ -74,7 +74,7 @@ impl Diagnostic for Error {
                 .with_message("Invalid call expression.")
                 .with_label(
                     Label::new((path, span.clone()))
-                        .with_message("invalid callee for the expression.")
+                        .with_message("invalid callee: an expression of function type is expected.")
                         .with_color(Color::Red),
                 ),
             Error::InvalidField(span, index) => {
@@ -103,7 +103,7 @@ impl Diagnostic for Error {
                 .with_message("Invalid assignment expression.")
                 .with_label(
                     Label::new((path, span.clone()))
-                        .with_message("cannot assign to an expression that is not a dereference, index or variable.")
+                        .with_message("cannot assign to an expression that is not a dereference, a field index or a variable.")
                         .with_color(Color::Red),
                 ),
             Error::UndefinedOrigin(name) => Report::build(ReportKind::Error, (path, name.span.clone()))
@@ -112,7 +112,7 @@ impl Diagnostic for Error {
                 .with_label(
                     Label::new((path, name.span.clone()))
                         .with_message(format!(
-                            "no origin named {} has been declared in the function.",
+                            "unknown origin {}.",
                             name.item
                         ))
                         .with_color(Color::Red),
@@ -134,7 +134,7 @@ impl Diagnostic for Error {
                 .with_label(
                     Label::new((path, name.span.clone()))
                         .with_message(format!(
-                            "cannot determine the type of {}.",
+                            "cannot determine the type of {}. Annotate the variable with a type or assign it with an initial value.",
                             name.item
                         ))
                         .with_color(Color::Red),

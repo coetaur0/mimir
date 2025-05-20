@@ -21,25 +21,28 @@ pub type Result<T> = result::Result<T, Vec<Error>>;
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error {
     IncompatibleTypes {
-        expected: Spanned<Type>,
+        expected: Type,
         found: Spanned<Type>,
     },
     InvalidArg {
+        expected: Type,
         found: Spanned<Type>,
-        expected: Spanned<Type>,
+    },
+    InvalidArgNum {
+        expected: usize,
+        found: Spanned<usize>,
     },
     InvalidIndex {
-        ty: Spanned<Type>,
+        ty: Type,
         index: Spanned<usize>,
     },
-    UndefinedOrigin(Span),
-    InvalidCondition(Spanned<Type>),
     InvalidCallee(Spanned<Type>),
-    InvalidArgNum(Spanned<usize>),
-    UnauthorizedBorrow(Span),
+    InvalidCondition(Spanned<Type>),
     InvalidDeref(Spanned<Type>),
+    UnauthorizedBorrow(Span),
     UndefinedGlobal(Spanned<String>),
     UndefinedLocal(Span),
+    UndefinedOrigin(Span),
 }
 
 impl Diagnostic for Error {
@@ -50,89 +53,82 @@ impl Diagnostic for Error {
                     .with_code(13)
                     .with_message("Incompatible types.")
                     .with_label(
-                        Label::new((path, expected.span.clone()))
-                            .with_message(format!("expected a value of type {}", expected))
-                            .with_color(Color::Blue),
-                    )
-                    .with_label(
                         Label::new((path, found.span.clone()))
-                            .with_message(format!("but found a value of type {}.", found))
+                            .with_message(format!(
+                                "expected a value of type {}, but found type {}.",
+                                expected, found.item
+                            ))
                             .with_color(Color::Red),
                     )
             }
-            Error::InvalidArg { found, expected } => {
+            Error::InvalidArg { expected, found } => {
                 Report::build(ReportKind::Error, (path, found.span.clone()))
                     .with_code(14)
                     .with_message("Invalid argument type.")
                     .with_label(
-                        Label::new((path, expected.span.clone()))
-                            .with_message(format!("expected a value of type {}", expected))
-                            .with_color(Color::Blue),
+                        Label::new((path, found.span.clone()))
+                            .with_message(format!(
+                                "expected a value of type {}, but found type {}.",
+                                expected, found.item
+                            ))
+                            .with_color(Color::Red),
                     )
+            }
+            Error::InvalidArgNum { expected, found } => {
+                Report::build(ReportKind::Error, (path, found.span.clone()))
+                    .with_code(15)
+                    .with_message("Invalid number of arguments.")
                     .with_label(
                         Label::new((path, found.span.clone()))
-                            .with_message(format!("but found a value of type {}.", found))
+                            .with_message(format!(
+                                "invalid number of arguments: expected {} but found {}.",
+                                expected, found.item
+                            ))
                             .with_color(Color::Red),
                     )
             }
             Error::InvalidIndex { ty, index } => {
-                Report::build(ReportKind::Error, (path, ty.span.clone()))
-                    .with_code(15)
+                Report::build(ReportKind::Error, (path, index.span.clone()))
+                    .with_code(16)
                     .with_message("Invalid field index.")
                     .with_label(
                         Label::new((path, index.span.clone()))
-                            .with_message(format!("invalid index {}", index.item))
-                            .with_color(Color::Red),
-                    )
-                    .with_label(
-                        Label::new((path, ty.span.clone()))
-                            .with_message(format!("for value of type {}.", ty))
-                            .with_color(Color::Blue),
-                    )
-            }
-            Error::UndefinedOrigin(span) => Report::build(ReportKind::Error, (path, span.clone()))
-                .with_code(16)
-                .with_message("Undefined origin.")
-                .with_label(
-                    Label::new((path, span.clone()))
-                        .with_message("undefined origin.")
-                        .with_color(Color::Red),
-                ),
-            Error::InvalidCondition(cond) => {
-                Report::build(ReportKind::Error, (path, cond.span.clone()))
-                    .with_code(17)
-                    .with_message("Invalid condition.")
-                    .with_label(
-                        Label::new((path, cond.span.clone()))
                             .with_message(format!(
-                                "expected a boolean value, but found a value of type {}.",
-                                cond
+                                "cannot access a value of type {} with index {}.",
+                                ty, index.item
                             ))
                             .with_color(Color::Red),
                     )
             }
             Error::InvalidCallee(callee) => {
                 Report::build(ReportKind::Error, (path, callee.span.clone()))
-                    .with_code(18)
+                    .with_code(17)
                     .with_message("Invalid callee.")
                     .with_label(
                         Label::new((path, callee.span.clone()))
+                            .with_message(format!("cannot call a value of type {}.", callee.item))
+                            .with_color(Color::Red),
+                    )
+            }
+            Error::InvalidCondition(cond) => {
+                Report::build(ReportKind::Error, (path, cond.span.clone()))
+                    .with_code(18)
+                    .with_message("Invalid condition.")
+                    .with_label(
+                        Label::new((path, cond.span.clone()))
                             .with_message(format!(
-                                "expected a value of function type, but found a value of type {}.",
-                                callee
+                                "expected a boolean value, but found a value of type {}.",
+                                cond.item
                             ))
                             .with_color(Color::Red),
                     )
             }
-            Error::InvalidArgNum(num) => Report::build(ReportKind::Error, (path, num.span.clone()))
+            Error::InvalidDeref(ty) => Report::build(ReportKind::Error, (path, ty.span.clone()))
                 .with_code(19)
-                .with_message("Invalid number of arguments.")
+                .with_message("Invalid dereference.")
                 .with_label(
-                    Label::new((path, num.span.clone()))
-                        .with_message(format!(
-                            "invalid number of arguments {} for the function call.",
-                            num.item
-                        ))
+                    Label::new((path, ty.span.clone()))
+                        .with_message(format!("cannot dereference a value of type {}.", ty.item))
                         .with_color(Color::Red),
                 ),
             Error::UnauthorizedBorrow(span) => {
@@ -145,17 +141,9 @@ impl Diagnostic for Error {
                             .with_color(Color::Red),
                     )
             }
-            Error::InvalidDeref(ty) => Report::build(ReportKind::Error, (path, ty.span.clone()))
-                .with_code(21)
-                .with_message("Invalid dereference.")
-                .with_label(
-                    Label::new((path, ty.span.clone()))
-                        .with_message(format!("cannot dereference a value of type {}.", ty))
-                        .with_color(Color::Red),
-                ),
             Error::UndefinedGlobal(name) => {
                 Report::build(ReportKind::Error, (path, name.span.clone()))
-                    .with_code(22)
+                    .with_code(21)
                     .with_message("Undefined function.")
                     .with_label(
                         Label::new((path, name.span.clone()))
@@ -164,11 +152,19 @@ impl Diagnostic for Error {
                     )
             }
             Error::UndefinedLocal(span) => Report::build(ReportKind::Error, (path, span.clone()))
-                .with_code(23)
+                .with_code(22)
                 .with_message("Undefined variable.")
                 .with_label(
                     Label::new((path, span.clone()))
                         .with_message("unknown variable.")
+                        .with_color(Color::Red),
+                ),
+            Error::UndefinedOrigin(span) => Report::build(ReportKind::Error, (path, span.clone()))
+                .with_code(23)
+                .with_message("Undefined origin.")
+                .with_label(
+                    Label::new((path, span.clone()))
+                        .with_message("unknown origin.")
                         .with_color(Color::Red),
                 ),
         }
@@ -322,19 +318,19 @@ impl<'m> TypeChecker<'m> {
         match self.place(callee)?.1.item {
             Type::Fn(params, result) => {
                 if args.len() != params.len() {
-                    return Err(vec![Error::InvalidArgNum(Spanned::new(
-                        args.len(),
-                        callee.span.clone(),
-                    ))]);
+                    return Err(vec![Error::InvalidArgNum {
+                        expected: params.len(),
+                        found: Spanned::new(args.len(), callee.span.clone()),
+                    }]);
                 }
 
                 let mut errors = Vec::new();
                 for (arg, param) in args.iter().zip(params) {
                     match self.operand(arg) {
                         Ok(ty) if ty.subtype_of(&param) => (),
-                        Ok(found) => errors.push(Error::InvalidArg {
-                            found,
-                            expected: param,
+                        Ok(ty) => errors.push(Error::InvalidArg {
+                            found: Spanned::new(ty.item.clone(), arg.span.clone()),
+                            expected: param.item,
                         }),
                         Err(errs) => errors.extend(errs),
                     }
@@ -348,8 +344,8 @@ impl<'m> TypeChecker<'m> {
                     Ok(())
                 } else {
                     Err(vec![Error::IncompatibleTypes {
-                        expected: target_ty,
-                        found: *result,
+                        expected: target_ty.item,
+                        found: Spanned::new(result.item.clone(), callee.span.clone()),
                     }])
                 }
             }
@@ -377,8 +373,8 @@ impl<'m> TypeChecker<'m> {
             Err(vec![Error::UnauthorizedBorrow(place.span.clone())])
         } else if !ref_ty.subtype_of(&target_ty) {
             Err(vec![Error::IncompatibleTypes {
-                expected: target_ty,
-                found: ref_ty,
+                expected: target_ty.item,
+                found: Spanned::new(ref_ty.item.clone(), place.span.clone()),
             }])
         } else {
             Ok(())
@@ -391,8 +387,8 @@ impl<'m> TypeChecker<'m> {
         let value_ty = self.operand(value)?;
         if !value_ty.subtype_of(&target_ty) {
             Err(vec![Error::IncompatibleTypes {
-                expected: target_ty,
-                found: value_ty,
+                expected: target_ty.item,
+                found: Spanned::new(value_ty.item.clone(), value.span.clone()),
             }])
         } else {
             Ok(())
@@ -449,7 +445,7 @@ impl<'m> TypeChecker<'m> {
                 Ok((is_mut, elems[index.item].clone()))
             }
             _ => Err(vec![Error::InvalidIndex {
-                ty,
+                ty: ty.item,
                 index: index.clone(),
             }]),
         }

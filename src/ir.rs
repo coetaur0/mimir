@@ -134,22 +134,23 @@ impl Spanned<Type> {
     }
 }
 
-impl fmt::Display for Spanned<Type> {
+impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.item {
+        match &self {
             Type::Fn(params, result) => {
-                let params: Vec<String> = params.iter().map(|p| p.to_string()).collect();
-                write!(f, "({}) -> {}", params.join(", "), result)
+                let params: Vec<String> = params.iter().map(|p| p.item.to_string()).collect();
+                write!(f, "({}) -> {}", params.join(", "), result.item)
             }
             Type::Ref(origin, mutable, ty) => {
+                let mutability = if *mutable { "mut " } else { "" };
                 if let Some(id) = origin {
-                    write!(f, "&'{} {} {}", id, *mutable, ty)
+                    write!(f, "&'{} {}{}", id, mutability, ty.item)
                 } else {
-                    write!(f, "&{} {}", *mutable, ty)
+                    write!(f, "&{}{}", mutability, ty.item)
                 }
             }
             Type::Tuple(elems) => {
-                let elems: Vec<String> = elems.iter().map(|p| p.to_string()).collect();
+                let elems: Vec<String> = elems.iter().map(|p| p.item.to_string()).collect();
                 write!(f, "({})", elems.join(", "))
             }
             Type::I32 => write!(f, "i32"),
