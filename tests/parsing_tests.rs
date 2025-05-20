@@ -1,4 +1,4 @@
-use mim::{parsing::*, source::Spanned};
+use mim::{Spanned, parsing::*};
 
 #[test]
 fn functions() {

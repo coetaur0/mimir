@@ -5,7 +5,7 @@ use std::{collections::HashMap, fmt, result};
 use ariadne::{Color, Label, Report, ReportKind, Source};
 use logos::{Lexer, Logos};
 
-use crate::{ast::*, source::*};
+use crate::{Diagnostic, Span, Spanned, ast::*};
 
 /// Parse a Mim module.
 pub fn parse(src: &str) -> Result<Module> {

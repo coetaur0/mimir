@@ -4,10 +4,7 @@ use std::result;
 
 use ariadne::{Color, Label, Report, ReportKind, Source};
 
-use crate::{
-    ir::*,
-    source::{Diagnostic, Span, Spanned},
-};
+use crate::{Diagnostic, Span, Spanned, ir::*};
 
 /// Type check an IR module.
 pub fn check(module: &Module) -> Result<()> {

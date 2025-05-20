@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::source::Spanned;
+use crate::Spanned;
 
 /// A module.
 #[derive(Debug)]

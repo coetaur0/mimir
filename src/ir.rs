@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, fmt};
 
-use crate::source::Spanned;
+use crate::Spanned;
 
 /// An origin identifier.
 pub type OriginId = usize;
