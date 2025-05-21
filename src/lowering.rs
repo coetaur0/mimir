@@ -207,16 +207,9 @@ impl<'m> Lowerer<'m> {
         self.locals.clear();
         let mut errors = Vec::new();
 
-        // Lower the function's origin parameters.
-        let origins: Vec<String> = function
-            .origins
-            .iter()
-            .enumerate()
-            .map(|(i, o)| {
-                self.origin_ids.insert(&o.item, i);
-                o.item.clone()
-            })
-            .collect();
+        for (i, origin) in function.origins.iter().enumerate() {
+            self.origin_ids.insert(&origin.item, i);
+        }
 
         // Lower the function's return type.
         self.locals.push(ir::Local {
@@ -243,9 +236,9 @@ impl<'m> Lowerer<'m> {
             // Assign the body's result to the function's return local in the IR.
             instrs.push(Instruction::Value(Spanned::new(Place::Local(0), span), op));
             Ok(ir::Function {
-                origins,
-                locals: mem::take(&mut self.locals),
+                origin_count: self.origin_ids.len(),
                 param_count: function.params.len(),
+                locals: mem::take(&mut self.locals),
                 body: instrs,
             })
         } else {
@@ -493,8 +486,6 @@ impl<'m> Lowerer<'m> {
         span: &Span,
     ) -> Result<(ir::Block, Spanned<Operand>, Spanned<ir::Type>)> {
         let (mut instrs, operand, ty) = self.expr(&callee.item, &callee.span)?;
-        let (place_instrs, place) = self.as_place(operand, &ty);
-        instrs.extend(place_instrs);
 
         let mut operands = Vec::new();
         for arg in args {
@@ -506,6 +497,9 @@ impl<'m> Lowerer<'m> {
                 Err(errors) => return Err(errors),
             }
         }
+
+        let (place_instrs, place) = self.as_place(operand, &ty);
+        instrs.extend(place_instrs);
 
         let ty = match ty.item {
             ir::Type::Fn(_, result) => *result,

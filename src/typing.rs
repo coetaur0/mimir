@@ -183,7 +183,7 @@ impl Diagnostic for Error {
 /// A type checker for Mimir.
 struct TypeChecker<'m> {
     module: &'m Module,
-    n_origins: usize,
+    origin_count: usize,
     locals: &'m [Local],
 }
 
@@ -192,7 +192,7 @@ impl<'m> TypeChecker<'m> {
     fn check(module: &'m Module) -> Result<()> {
         let mut ty_checker = TypeChecker {
             module,
-            n_origins: 0,
+            origin_count: 0,
             locals: &[],
         };
         let mut errors = Vec::new();
@@ -211,7 +211,7 @@ impl<'m> TypeChecker<'m> {
 
     /// Type check a function declaration.
     fn function(&mut self, function: &'m Function) -> Result<()> {
-        self.n_origins = function.origins.len();
+        self.origin_count = function.origin_count;
         self.locals = &function.locals;
         let mut errors = Vec::new();
 
@@ -236,7 +236,7 @@ impl<'m> TypeChecker<'m> {
                 if with_origins && origin.is_none() {
                     return Err(vec![Error::OriginNeeded(ty.span.clone())]);
                 }
-                if origin.is_some() && origin.unwrap() >= self.n_origins {
+                if origin.is_some() && origin.unwrap() >= self.origin_count {
                     return Err(vec![Error::UndefinedOrigin(ty.span.clone())]);
                 }
                 self.ty(ty, with_origins)
