@@ -8,6 +8,7 @@ use crate::{
     Diagnostic, Span, Spanned,
     ast::{self, Expr, Parameter, Stmt},
     ir::{self, Instruction, Local, LocalId, Operand, OriginId, Place},
+    typing::substitute,
 };
 
 /// Lower an AST module to its IR representation.
@@ -31,11 +32,11 @@ pub enum Error {
     DuplicateOrigin(Spanned<String>),
     DuplicateParameter(Spanned<String>),
     InvalidCallee(Span),
-    InvalidField(Span, Spanned<usize>),
     InvalidDeref(Span),
+    InvalidField(Span, Spanned<usize>),
     UnassignableExpr(Span),
-    UndefinedOrigin(Spanned<String>),
     UndefinedName(Spanned<String>),
+    UndefinedOrigin(Spanned<String>),
     UndefinedType(Spanned<String>),
 }
 
@@ -76,9 +77,17 @@ impl Diagnostic for Error {
                         .with_message("invalid callee: an expression of function type is expected.")
                         .with_color(Color::Red),
                 ),
+            Error::InvalidDeref(span) => Report::build(ReportKind::Error, (path, span.clone()))
+                .with_code(7)
+                .with_message("Invalid dereference expression.")
+                .with_label(
+                    Label::new((path, span.clone()))
+                        .with_message("this expression cannot be dereferenced.")
+                        .with_color(Color::Red),
+                ),
             Error::InvalidField(span, index) => {
                 Report::build(ReportKind::Error, (path, span.clone()))
-                    .with_code(7)
+                    .with_code(8)
                     .with_message("Invalid field index expression.")
                     .with_label(
                         Label::new((path, index.span.clone()))
@@ -89,14 +98,6 @@ impl Diagnostic for Error {
                             .with_color(Color::Red),
                     )
             }
-            Error::InvalidDeref(span) => Report::build(ReportKind::Error, (path, span.clone()))
-                .with_code(8)
-                .with_message("Invalid dereference expression.")
-                .with_label(
-                    Label::new((path, span.clone()))
-                        .with_message("this expression cannot be dereferenced.")
-                        .with_color(Color::Red),
-                ),
             Error::UnassignableExpr(span) => Report::build(ReportKind::Error, (path, span.clone()))
                 .with_code(9)
                 .with_message("Invalid assignment expression.")
@@ -105,24 +106,24 @@ impl Diagnostic for Error {
                         .with_message("cannot assign to an expression that is not a dereference, a field index or a variable.")
                         .with_color(Color::Red),
                 ),
-            Error::UndefinedOrigin(name) => Report::build(ReportKind::Error, (path, name.span.clone()))
-                .with_code(10)
-                .with_message("Undefined origin.")
-                .with_label(
-                    Label::new((path, name.span.clone()))
-                        .with_message(format!(
-                            "unknown origin {}.",
-                            name.item
-                        ))
-                        .with_color(Color::Red),
-                ),
             Error::UndefinedName(name) => Report::build(ReportKind::Error, (path, name.span.clone()))
-                .with_code(11)
+                .with_code(10)
                 .with_message("Undefined name.")
                 .with_label(
                     Label::new((path, name.span.clone()))
                         .with_message(format!(
                             "no function or variable named {} in scope.",
+                            name.item
+                        ))
+                        .with_color(Color::Red),
+                ),
+            Error::UndefinedOrigin(name) => Report::build(ReportKind::Error, (path, name.span.clone()))
+                .with_code(11)
+                .with_message("Undefined origin.")
+                .with_label(
+                    Label::new((path, name.span.clone()))
+                        .with_message(format!(
+                            "unknown origin {}.",
                             name.item
                         ))
                         .with_color(Color::Red),
@@ -434,8 +435,8 @@ impl<'m> Lowerer<'m> {
             Expr::Deref(place) => self.deref_expr(place, span),
             Expr::Tuple(elems) => self.tuple_expr(elems, span),
             Expr::Block(block) => self.block_expr(block),
-            Expr::Name(name) => {
-                let (op, ty) = self.name_expr(name, span)?;
+            Expr::Name(name, origin_args) => {
+                let (op, ty) = self.name_expr(name, origin_args, span)?;
                 Ok((Vec::new(), op, ty))
             }
             Expr::Int(value) => Ok((
@@ -529,16 +530,20 @@ impl<'m> Lowerer<'m> {
         let (mut instrs, operand, ty) = self.expr(&expr.item, &expr.span)?;
         let (place_instrs, place) = self.as_place(operand, &ty);
         instrs.extend(place_instrs);
+        let target_ty = Spanned::new(
+            ir::Type::Ref(None, mutable, Box::new(ty.clone())),
+            span.clone(),
+        );
         self.locals.push(Local {
             mutable: true,
-            ty: ty.clone(),
+            ty: target_ty.clone(),
         });
         let target = Spanned::new(Place::Local(self.locals.len() - 1), span.clone());
         instrs.push(Instruction::Borrow(target.clone(), mutable, place));
         Ok((
             instrs,
             Spanned::new(Operand::Place(target.item), target.span),
-            Spanned::new(ir::Type::Ref(None, mutable, Box::new(ty)), span.clone()),
+            target_ty,
         ))
     }
 
@@ -657,28 +662,51 @@ impl<'m> Lowerer<'m> {
     /// Lower an AST name expression to its IR representation and type.
     fn name_expr(
         &self,
-        name: &'m str,
+        name: &'m Spanned<String>,
+        origin_args: &'m Vec<Option<Spanned<String>>>,
         span: &Span,
     ) -> Result<(Spanned<Operand>, Spanned<ir::Type>)> {
-        match self.local_ids.get(name) {
+        match self.local_ids.get(&name.item) {
             Some(id) => Ok((
-                Spanned::new(Operand::Place(Place::Local(*id)), span.clone()),
+                Spanned::new(Operand::Place(Place::Local(*id)), name.span.clone()),
                 self.locals[*id].ty.clone(),
             )),
-            None => match self.globals.get(name) {
-                Some(ty) => Ok((
-                    Spanned::new(
-                        Operand::Place(Place::Global(name.to_string())),
-                        span.clone(),
-                    ),
-                    ty.clone(),
-                )),
-                None => Err(vec![Error::UndefinedName(Spanned::new(
-                    name.to_string(),
-                    span.clone(),
-                ))]),
+            None => match self.globals.get::<str>(name.item.as_ref()) {
+                Some(ty) => {
+                    let args = self.origin_args(origin_args)?;
+                    let ty_instance = substitute(ty, &args);
+                    Ok((
+                        Spanned::new(
+                            Operand::Place(Place::Global(name.clone(), args)),
+                            span.clone(),
+                        ),
+                        ty_instance,
+                    ))
+                }
+                None => Err(vec![Error::UndefinedName(name.clone())]),
             },
         }
+    }
+
+    /// Lower a sequence of origin arguments to origin ids.
+    fn origin_args(&self, args: &'m Vec<Option<Spanned<String>>>) -> Result<Vec<Option<OriginId>>> {
+        let mut origin_ids = Vec::new();
+        let mut errors = Vec::new();
+
+        for arg in args {
+            match arg {
+                Some(name) => match self.origin_ids.get::<str>(name.item.as_ref()) {
+                    Some(id) => origin_ids.push(Some(*id)),
+                    None => errors.push(Error::UndefinedOrigin(name.clone())),
+                },
+                None => origin_ids.push(None),
+            }
+        }
+
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+        Ok(origin_ids)
     }
 
     /// Transform an IR operand to a place expression.

@@ -2,7 +2,7 @@ use mim::{Spanned, parsing::*};
 
 #[test]
 fn functions() {
-    check_ok("fn f<'a>(r: &'a mut i32) -> i32 { *r } fn main() { f(&42) }");
+    check_ok("fn f<'a>(r: &'a mut i32) -> i32 { *r } fn main() { f<'_>(&42) }");
     check_err(
         "fn f() {} fn f() {}",
         vec![Error::DuplicateFunction(Spanned::new(

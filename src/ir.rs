@@ -76,7 +76,7 @@ pub enum Operand {
 pub enum Place {
     Field(Box<Spanned<Self>>, Spanned<usize>),
     Deref(Box<Spanned<Self>>),
-    Global(String),
+    Global(Spanned<String>, Vec<Option<OriginId>>),
     Local(LocalId),
 }
 
@@ -130,31 +130,6 @@ impl Spanned<Type> {
                     && l_elems.iter().zip(r_elems).all(|(l, r)| l.subtype_of(r))
             }
             (l_ty, r_ty) => l_ty == r_ty,
-        }
-    }
-
-    /// Substitute the origin ids in a type.
-    pub fn substitute(&self, subst: &HashMap<OriginId, OriginId>) -> Spanned<Type> {
-        match &self.item {
-            Type::Fn(params, result) => Spanned::new(
-                Type::Fn(
-                    params.iter().map(|p| p.substitute(subst)).collect(),
-                    Box::new(result.substitute(subst)),
-                ),
-                self.span.clone(),
-            ),
-            Type::Ref(origin, mutability, ref_ty) => {
-                let new_origin = origin.map(|o| (subst.get(&o).copied()).unwrap_or(o));
-                Spanned::new(
-                    Type::Ref(new_origin, *mutability, Box::new(ref_ty.substitute(subst))),
-                    self.span.clone(),
-                )
-            }
-            Type::Tuple(elems) => Spanned::new(
-                Type::Tuple(elems.iter().map(|e| e.substitute(subst)).collect()),
-                self.span.clone(),
-            ),
-            Type::I32 | Type::Bool => self.clone(),
         }
     }
 }

@@ -11,6 +11,39 @@ pub fn check(module: &Module) -> Result<()> {
     TypeChecker::check(module)
 }
 
+/// Substitute the origin ids in a type.
+pub fn substitute(ty: &Spanned<Type>, subst: &[Option<OriginId>]) -> Spanned<Type> {
+    match &ty.item {
+        Type::Fn(params, result) => Spanned::new(
+            Type::Fn(
+                params.iter().map(|p| substitute(p, subst)).collect(),
+                Box::new(substitute(result, subst)),
+            ),
+            ty.span.clone(),
+        ),
+        Type::Ref(origin, mutability, ref_ty) => {
+            let new_origin = origin
+                .map(|id| {
+                    if id < subst.len() {
+                        subst[id]
+                    } else {
+                        Some(id)
+                    }
+                })
+                .unwrap_or(None);
+            Spanned::new(
+                Type::Ref(new_origin, *mutability, Box::new(substitute(ref_ty, subst))),
+                ty.span.clone(),
+            )
+        }
+        Type::Tuple(elems) => Spanned::new(
+            Type::Tuple(elems.iter().map(|e| substitute(e, subst)).collect()),
+            ty.span.clone(),
+        ),
+        Type::I32 | Type::Bool => ty.clone(),
+    }
+}
+
 /// A type checking result.
 pub type Result<T> = result::Result<T, Vec<Error>>;
 
@@ -29,13 +62,18 @@ pub enum Error {
         expected: usize,
         found: Spanned<usize>,
     },
-    InvalidIndex {
-        ty: Type,
-        index: Spanned<usize>,
-    },
     InvalidCallee(Spanned<Type>),
     InvalidCondition(Spanned<Type>),
     InvalidDeref(Spanned<Type>),
+    InvalidField {
+        ty: Type,
+        index: Spanned<usize>,
+    },
+    InvalidOriginArgNum {
+        name: Spanned<String>,
+        expected: usize,
+        found: usize,
+    },
     OriginNeeded(Span),
     UnauthorizedBorrow(Span),
     UndefinedGlobal(Spanned<String>),
@@ -85,22 +123,9 @@ impl Diagnostic for Error {
                             .with_color(Color::Red),
                     )
             }
-            Error::InvalidIndex { ty, index } => {
-                Report::build(ReportKind::Error, (path, index.span.clone()))
-                    .with_code(16)
-                    .with_message("Invalid field index.")
-                    .with_label(
-                        Label::new((path, index.span.clone()))
-                            .with_message(format!(
-                                "cannot access a value of type {} with index {}.",
-                                ty, index.item
-                            ))
-                            .with_color(Color::Red),
-                    )
-            }
             Error::InvalidCallee(callee) => {
                 Report::build(ReportKind::Error, (path, callee.span.clone()))
-                    .with_code(17)
+                    .with_code(16)
                     .with_message("Invalid callee.")
                     .with_label(
                         Label::new((path, callee.span.clone()))
@@ -110,7 +135,7 @@ impl Diagnostic for Error {
             }
             Error::InvalidCondition(cond) => {
                 Report::build(ReportKind::Error, (path, cond.span.clone()))
-                    .with_code(18)
+                    .with_code(17)
                     .with_message("Invalid condition.")
                     .with_label(
                         Label::new((path, cond.span.clone()))
@@ -121,25 +146,52 @@ impl Diagnostic for Error {
                             .with_color(Color::Red),
                     )
             }
-            Error::InvalidDeref(ty) => Report::build(ReportKind::Error, (path, ty.span.clone()))
-                .with_code(19)
-                .with_message("Invalid dereference.")
-                .with_label(
-                    Label::new((path, ty.span.clone()))
-                        .with_message(format!("cannot dereference a value of type {}.", ty.item))
-                        .with_color(Color::Red),
-                ),
-            Error::OriginNeeded(span) => Report::build(ReportKind::Error, (path, span.clone()))
-                .with_code(20)
-                .with_message("No origin specified.")
-                .with_label(
-                    Label::new((path, span.clone()))
-                        .with_message("references in function signatures need to be annotated with their origin.")
-                        .with_color(Color::Red),
-                ),
-            Error::UnauthorizedBorrow(span) => {
+            Error::InvalidDeref(ty) => {
+                Report::build(ReportKind::Error, (path, ty.span.clone()))
+                    .with_code(18)
+                    .with_message("Invalid dereference.")
+                    .with_label(
+                        Label::new((path, ty.span.clone()))
+                            .with_message(format!("cannot dereference a value of type {}.", ty.item))
+                            .with_color(Color::Red),
+                    )
+            }
+            Error::InvalidField { ty, index } => {
+                Report::build(ReportKind::Error, (path, index.span.clone()))
+                    .with_code(19)
+                    .with_message("Invalid field index.")
+                    .with_label(
+                        Label::new((path, index.span.clone()))
+                            .with_message(format!(
+                                "cannot access a value of type {} with index {}.",
+                                ty, index.item
+                            ))
+                            .with_color(Color::Red),
+                    )
+            }
+            Error::InvalidOriginArgNum {name, expected, found } => {
+                Report::build(ReportKind::Error, (path, name.span.clone()))
+                    .with_code(20)
+                    .with_message("Invalid number of origin arguments.")
+                    .with_label(
+                        Label::new((path, name.span.clone()))
+                            .with_message(format!("function {} requires {} origin arguments, but {} were found.", name.item, expected, found))
+                            .with_color(Color::Red),
+                    )
+            }
+            Error::OriginNeeded(span) => {
                 Report::build(ReportKind::Error, (path, span.clone()))
                     .with_code(21)
+                    .with_message("No origin specified.")
+                    .with_label(
+                        Label::new((path, span.clone()))
+                            .with_message("references in function signatures need to be annotated with their origin.")
+                            .with_color(Color::Red),
+                    )
+            }
+            Error::UnauthorizedBorrow(span) => {
+                Report::build(ReportKind::Error, (path, span.clone()))
+                    .with_code(22)
                     .with_message("Unauthorized borrow.")
                     .with_label(
                         Label::new((path, span.clone()))
@@ -149,7 +201,7 @@ impl Diagnostic for Error {
             }
             Error::UndefinedGlobal(name) => {
                 Report::build(ReportKind::Error, (path, name.span.clone()))
-                    .with_code(22)
+                    .with_code(23)
                     .with_message("Undefined function.")
                     .with_label(
                         Label::new((path, name.span.clone()))
@@ -157,22 +209,26 @@ impl Diagnostic for Error {
                             .with_color(Color::Red),
                     )
             }
-            Error::UndefinedLocal(span) => Report::build(ReportKind::Error, (path, span.clone()))
-                .with_code(23)
-                .with_message("Undefined variable.")
-                .with_label(
-                    Label::new((path, span.clone()))
-                        .with_message("unknown variable.")
-                        .with_color(Color::Red),
-                ),
-            Error::UndefinedOrigin(span) => Report::build(ReportKind::Error, (path, span.clone()))
-                .with_code(24)
-                .with_message("Undefined origin.")
-                .with_label(
-                    Label::new((path, span.clone()))
-                        .with_message("unknown origin.")
-                        .with_color(Color::Red),
-                ),
+            Error::UndefinedLocal(span) => {
+                Report::build(ReportKind::Error, (path, span.clone()))
+                    .with_code(24)
+                    .with_message("Undefined variable.")
+                    .with_label(
+                        Label::new((path, span.clone()))
+                            .with_message("unknown variable.")
+                            .with_color(Color::Red),
+                    )
+            }
+            Error::UndefinedOrigin(span) => {
+                Report::build(ReportKind::Error, (path, span.clone()))
+                    .with_code(25)
+                    .with_message("Undefined origin.")
+                    .with_label(
+                        Label::new((path, span.clone()))
+                            .with_message("unknown origin.")
+                            .with_color(Color::Red),
+                    )
+            }
         }
         .finish()
         .eprint((path, Source::from(contents)))
@@ -439,7 +495,7 @@ impl<'m> TypeChecker<'m> {
         match &place.item {
             Place::Field(place, index) => self.index_place(place, index),
             Place::Deref(place) => self.deref_place(place),
-            Place::Global(name) => self.global_place(name, &place.span),
+            Place::Global(name, args) => self.global_place(name, args),
             Place::Local(id) => self.local_place(*id, &place.span),
         }
     }
@@ -455,7 +511,7 @@ impl<'m> TypeChecker<'m> {
             Type::Tuple(elems) if index.item < elems.len() => {
                 Ok((is_mut, elems[index.item].clone()))
             }
-            _ => Err(vec![Error::InvalidIndex {
+            _ => Err(vec![Error::InvalidField {
                 ty: ty.item,
                 index: index.clone(),
             }]),
@@ -472,14 +528,24 @@ impl<'m> TypeChecker<'m> {
     }
 
     /// Type check a global place expression.
-    fn global_place(&self, name: &str, span: &Span) -> Result<(bool, Spanned<Type>)> {
-        self.module.functions.get(name).map_or(
-            Err(vec![Error::UndefinedGlobal(Spanned::new(
-                name.to_string(),
-                span.clone(),
-            ))]),
-            |f| Ok((false, f.ty())),
-        )
+    fn global_place(
+        &self,
+        name: &Spanned<String>,
+        args: &[Option<OriginId>],
+    ) -> Result<(bool, Spanned<Type>)> {
+        match self.module.functions.get(&name.item) {
+            Some(f) => {
+                if args.len() != f.origin_count {
+                    return Err(vec![Error::InvalidOriginArgNum {
+                        name: name.clone(),
+                        expected: f.origin_count,
+                        found: args.len(),
+                    }]);
+                }
+                Ok((false, substitute(&f.ty(), args)))
+            }
+            None => Err(vec![Error::UndefinedGlobal(name.clone())]),
+        }
     }
 
     /// Type check a local place expression.

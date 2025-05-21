@@ -19,6 +19,7 @@ pub type Result<T> = result::Result<T, Vec<Error>>;
 /// A parsing error.
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error {
+    DuplicateFunction(Spanned<String>),
     UnclosedDelimiter {
         open: Spanned<String>,
         expected: Token,
@@ -28,18 +29,30 @@ pub enum Error {
         expected: String,
         found: Spanned<Token>,
     },
-    DuplicateFunction(Spanned<String>),
 }
 
 impl Diagnostic for Error {
     fn print(&self, path: &str, contents: &str) {
         match self {
+            Error::DuplicateFunction(name) => {
+                Report::build(ReportKind::Error, (path, name.span.clone()))
+                    .with_code(1)
+                    .with_message("Duplicate function declaration.")
+                    .with_label(
+                        Label::new((path, name.span.clone()))
+                            .with_message(format!(
+                                "a function named '{}' is already defined in the module.",
+                                name.item
+                            ))
+                            .with_color(Color::Red),
+                    )
+            }
             Error::UnclosedDelimiter {
                 open,
                 expected,
                 found,
             } => Report::build(ReportKind::Error, (path, found.span.clone()))
-                .with_code(1)
+                .with_code(2)
                 .with_message("Unclosed delimiter.")
                 .with_label(
                     Label::new((path, open.span.clone()))
@@ -59,26 +72,13 @@ impl Diagnostic for Error {
                 ),
             Error::UnexpectedToken { expected, found } => {
                 Report::build(ReportKind::Error, (path, found.span.clone()))
-                    .with_code(2)
+                    .with_code(3)
                     .with_message("Unexpected token.")
                     .with_label(
                         Label::new((path, found.span.clone()))
                             .with_message(format!(
                                 "{} was expected, but {} was found instead.",
                                 expected, found.item
-                            ))
-                            .with_color(Color::Red),
-                    )
-            }
-            Error::DuplicateFunction(name) => {
-                Report::build(ReportKind::Error, (path, name.span.clone()))
-                    .with_code(3)
-                    .with_message("Duplicate function declaration.")
-                    .with_label(
-                        Label::new((path, name.span.clone()))
-                            .with_message(format!(
-                                "a function named '{}' is already defined in the module.",
-                                name.item
                             ))
                             .with_color(Color::Red),
                     )
@@ -113,8 +113,10 @@ pub enum Token {
     ElseKw,
 
     // Literals:
-    #[regex(r"'(\p{XID_Start}|_)\p{XID_Continue}*")]
+    #[regex(r"'(\p{XID_Start}|_)\p{XID_Continue}*", priority = 1)]
     Origin,
+    #[token("'_", priority = 2)]
+    LocalOrigin,
     #[regex(r"(\p{XID_Start}|_)\p{XID_Continue}*")]
     Name,
     #[regex(r"[0-9][_0-9]*")]
@@ -171,6 +173,7 @@ impl fmt::Display for Token {
             Token::IfKw => write!(f, "the 'if' keyword"),
             Token::ElseKw => write!(f, "the 'else' keyword"),
             Token::Origin => write!(f, "an origin"),
+            Token::LocalOrigin => write!(f, "the local origin"),
             Token::Name => write!(f, "a name"),
             Token::IntLit => write!(f, "an integer literal"),
             Token::TrueLit => write!(f, "the 'true' boolean literal"),
@@ -461,14 +464,11 @@ impl<'src> Parser<'src> {
             Token::IfKw => self.if_expr(),
             Token::LParen => self.paren_expr(),
             Token::Ampersand => self.borrow_expr(),
+            Token::Name => self.name_expr(),
             Token::IntLit => self.int_expr(),
             Token::LBrace => {
                 let block = self.block()?;
                 Ok(Spanned::new(Expr::Block(Box::new(block.item)), block.span))
-            }
-            Token::Name => {
-                let name = self.expect(Token::Name)?;
-                Ok(Spanned::new(Expr::Name(name.item), name.span))
             }
             Token::TrueLit => {
                 let span = self.consume().span;
@@ -528,12 +528,42 @@ impl<'src> Parser<'src> {
         Ok(Spanned::new(Expr::Borrow(mutable, Box::new(expr)), span))
     }
 
+    /// Parse a name expression.
+    fn name_expr(&mut self) -> Result<Spanned<Expr>> {
+        let name = self.expect(Token::Name)?;
+        let origin_args = self.optional(
+            |p| {
+                p.delimited(
+                    |p| p.list(Self::origin_arg, Token::Comma, Token::RAngle),
+                    Token::LAngle,
+                    Token::RAngle,
+                )
+            },
+            Token::LAngle,
+            Spanned::new(Vec::new(), name.span.clone()),
+        )?;
+        let span = name.span.start..origin_args.span.end;
+        Ok(Spanned::new(Expr::Name(name, origin_args.item), span))
+    }
+
     /// Parse an integer literal.
     fn int_expr(&mut self) -> Result<Spanned<Expr>> {
         let number = self.expect(Token::IntLit)?;
         match number.item.parse::<i32>() {
             Ok(value) => Ok(Spanned::new(Expr::Int(value), number.span)),
             Err(_) => Err(self.expected("a valid integer constant".to_string())),
+        }
+    }
+
+    /// Parse an origin argument.
+    fn origin_arg(&mut self) -> Result<Option<Spanned<String>>> {
+        match self.token {
+            Token::Origin => Ok(Some(self.expect(Token::Origin).unwrap())),
+            Token::LocalOrigin => {
+                self.advance();
+                Ok(None)
+            }
+            _ => Err(self.expected("an origin argument".to_string())),
         }
     }
 

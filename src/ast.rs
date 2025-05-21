@@ -76,7 +76,7 @@ pub enum Expr {
     Deref(Box<Spanned<Self>>),
     Tuple(Vec<Spanned<Self>>),
     Block(Box<Block>),
-    Name(String),
+    Name(Spanned<String>, Vec<Option<Spanned<String>>>),
     Int(i32),
     Bool(bool),
 }
