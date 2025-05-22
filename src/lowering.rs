@@ -272,12 +272,9 @@ impl<'m> Lowerer<'m> {
         let (mut instrs, r_op, _) = self.expr(&rhs.item, &rhs.span)?;
         let (l_instrs, l_op, _) = self.expr(&lhs.item, &lhs.span)?;
         match l_op.item {
-            Operand::Place(Place::Local(id)) => {
+            Operand::Place(p) => {
                 instrs.extend(l_instrs);
-                instrs.push(Instruction::Value(
-                    Spanned::new(Place::Local(id), lhs.span.clone()),
-                    r_op,
-                ));
+                instrs.push(Instruction::Value(Spanned::new(p, lhs.span.clone()), r_op));
                 Ok(instrs)
             }
             _ => Err(vec![Error::UnassignableExpr(lhs.span.clone())]),
