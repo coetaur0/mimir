@@ -1,93 +1,18 @@
 //! Parsing functions.
 
-use std::{collections::HashMap, fmt, result};
+use std::{collections::HashMap, fmt};
 
-use ariadne::{Color, Label, Report, ReportKind, Source};
 use logos::{Lexer, Logos};
 
-use crate::{Diagnostic, Span, Spanned, ast::*};
+use crate::{
+    ast::*,
+    reporting::{Error, Result, Span, Spanned},
+};
 
 /// Parse a Mim module.
 pub fn parse(src: &str) -> Result<Module> {
     let mut parser = Parser::new(src);
     parser.module()
-}
-
-/// A parsing result.
-pub type Result<T> = result::Result<T, Vec<Error>>;
-
-/// A parsing error.
-#[derive(Debug, Eq, PartialEq)]
-pub enum Error {
-    DuplicateFunction(Spanned<String>),
-    UnclosedDelimiter {
-        open: Spanned<String>,
-        expected: Token,
-        found: Spanned<Token>,
-    },
-    UnexpectedToken {
-        expected: String,
-        found: Spanned<Token>,
-    },
-}
-
-impl Diagnostic for Error {
-    fn print(&self, path: &str, contents: &str) {
-        match self {
-            Error::DuplicateFunction(name) => {
-                Report::build(ReportKind::Error, (path, name.span.clone()))
-                    .with_code(1)
-                    .with_message("Duplicate function declaration.")
-                    .with_label(
-                        Label::new((path, name.span.clone()))
-                            .with_message(format!(
-                                "a function named '{}' is already defined in the module.",
-                                name.item
-                            ))
-                            .with_color(Color::Red),
-                    )
-            }
-            Error::UnclosedDelimiter {
-                open,
-                expected,
-                found,
-            } => Report::build(ReportKind::Error, (path, found.span.clone()))
-                .with_code(2)
-                .with_message("Unclosed delimiter.")
-                .with_label(
-                    Label::new((path, open.span.clone()))
-                        .with_message(format!(
-                            "the opening delimiter '{}' is missing a matching closing delimiter",
-                            open.item
-                        ))
-                        .with_color(Color::Blue),
-                )
-                .with_label(
-                    Label::new((path, found.span.clone()))
-                        .with_message(format!(
-                            "{} was expected, but {} was found instead.",
-                            expected, found.item
-                        ))
-                        .with_color(Color::Red),
-                ),
-            Error::UnexpectedToken { expected, found } => {
-                Report::build(ReportKind::Error, (path, found.span.clone()))
-                    .with_code(3)
-                    .with_message("Unexpected token.")
-                    .with_label(
-                        Label::new((path, found.span.clone()))
-                            .with_message(format!(
-                                "{} was expected, but {} was found instead.",
-                                expected, found.item
-                            ))
-                            .with_color(Color::Red),
-                    )
-            }
-        }
-        .finish()
-        .eprint((path, Source::from(contents)))
-        .unwrap()
-    }
 }
 
 /// A lexical token.
@@ -322,11 +247,11 @@ impl<'src> Parser<'src> {
         let end = if self.peek(Token::RBrace) {
             self.consume().span.end
         } else {
-            errors.push(Error::UnclosedDelimiter {
+            errors.push(Error::UnclosedDelimiter(
                 open,
-                expected: Token::RBrace,
-                found: Spanned::new(self.token, self.span()),
-            });
+                Token::RBrace,
+                Spanned::new(self.token, self.span()),
+            ));
             return Err(errors);
         };
 
@@ -649,11 +574,11 @@ impl<'src> Parser<'src> {
             let end = self.consume().span.end;
             Ok(Spanned::new(item, open.span.start..end))
         } else {
-            Err(vec![Error::UnclosedDelimiter {
+            Err(vec![Error::UnclosedDelimiter(
                 open,
-                expected: close,
-                found: Spanned::new(self.token, self.span()),
-            }])
+                close,
+                Spanned::new(self.token, self.span()),
+            )])
         }
     }
 
@@ -737,10 +662,10 @@ impl<'src> Parser<'src> {
     /// Return a syntax error indicating that something else than the next token was expected in
     /// the source.
     fn expected(&self, message: String) -> Vec<Error> {
-        vec![Error::UnexpectedToken {
-            expected: message,
-            found: Spanned::new(self.token, self.span()),
-        }]
+        vec![Error::UnexpectedToken(
+            message,
+            Spanned::new(self.token, self.span()),
+        )]
     }
 
     /// Recover at the next token in the source that belongs to a given list of token kinds.

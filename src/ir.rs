@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, fmt};
 
-use crate::Spanned;
+use crate::reporting::Spanned;
 
 /// An origin identifier.
 pub type OriginId = usize;
@@ -122,7 +122,7 @@ impl Spanned<Type> {
             (Type::Ref(l_origin, l_mut, l_ty), Type::Ref(r_origin, r_mut, r_ty)) => {
                 (r_origin.is_some_and(|rid| l_origin.is_some_and(|lid| lid == rid))
                     || r_origin.is_none())
-                    && (*r_mut || !*l_mut)
+                    && (*l_mut || !*r_mut)
                     && l_ty.subtype_of(r_ty)
             }
             (Type::Tuple(l_elems), Type::Tuple(r_elems)) => {
@@ -130,6 +130,39 @@ impl Spanned<Type> {
                     && l_elems.iter().zip(r_elems).all(|(l, r)| l.subtype_of(r))
             }
             (l_ty, r_ty) => l_ty == r_ty,
+        }
+    }
+
+    /// Substitute the origin ids in a type.
+    pub fn substitute(&self, subst: &[Option<OriginId>]) -> Spanned<Type> {
+        match &self.item {
+            Type::Fn(params, result) => Spanned::new(
+                Type::Fn(
+                    params.iter().map(|p| p.substitute(subst)).collect(),
+                    Box::new(result.substitute(subst)),
+                ),
+                self.span.clone(),
+            ),
+            Type::Ref(origin, mutability, ref_ty) => {
+                let new_origin = origin
+                    .map(|id| {
+                        if id < subst.len() {
+                            subst[id]
+                        } else {
+                            Some(id)
+                        }
+                    })
+                    .unwrap_or(None);
+                Spanned::new(
+                    Type::Ref(new_origin, *mutability, Box::new(ref_ty.substitute(subst))),
+                    self.span.clone(),
+                )
+            }
+            Type::Tuple(elems) => Spanned::new(
+                Type::Tuple(elems.iter().map(|e| e.substitute(subst)).collect()),
+                self.span.clone(),
+            ),
+            Type::I32 | Type::Bool => self.clone(),
         }
     }
 }

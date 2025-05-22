@@ -1,14 +1,11 @@
 //! AST to IR lowering functions.
 
-use std::{collections::HashMap, mem, result};
-
-use ariadne::{Color, Label, Report, ReportKind, Source};
+use std::{collections::HashMap, mem};
 
 use crate::{
-    Diagnostic, Span, Spanned,
     ast::{self, Expr, Parameter, Stmt},
     ir::{self, Instruction, Local, LocalId, Operand, OriginId, Place},
-    typing::substitute,
+    reporting::{Error, Result, Span, Spanned},
 };
 
 /// Lower an AST module to its IR representation.
@@ -21,129 +18,6 @@ pub fn lower(module: &ast::Module) -> Result<ir::Module> {
     };
     lowerer.globals(module)?;
     lowerer.module(module)
-}
-
-/// An AST lowering result.
-pub type Result<T> = result::Result<T, Vec<Error>>;
-
-/// An AST lowering error.
-#[derive(Debug, Eq, PartialEq)]
-pub enum Error {
-    DuplicateOrigin(Spanned<String>),
-    DuplicateParameter(Spanned<String>),
-    InvalidCallee(Span),
-    InvalidDeref(Span),
-    InvalidField(Span, Spanned<usize>),
-    UnassignableExpr(Span),
-    UndefinedName(Spanned<String>),
-    UndefinedOrigin(Spanned<String>),
-    UndefinedType(Spanned<String>),
-}
-
-impl Diagnostic for Error {
-    fn print(&self, path: &str, contents: &str) {
-        match self {
-            Error::DuplicateOrigin(name) => {
-                Report::build(ReportKind::Error, (path, name.span.clone()))
-                    .with_code(4)
-                    .with_message("Duplicate origin declaration.")
-                    .with_label(
-                        Label::new((path, name.span.clone()))
-                            .with_message(format!(
-                                "an origin named {} has already been declared in the function.",
-                                name.item
-                            ))
-                            .with_color(Color::Red),
-                    )
-            }
-            Error::DuplicateParameter(name) => {
-                Report::build(ReportKind::Error, (path, name.span.clone()))
-                    .with_code(5)
-                    .with_message("Duplicate parameter declaration.")
-                    .with_label(
-                        Label::new((path, name.span.clone()))
-                            .with_message(format!(
-                                "a parameter named {} has already been declared in the function.",
-                                name.item
-                            ))
-                            .with_color(Color::Red),
-                    )
-            }
-            Error::InvalidCallee(span) => Report::build(ReportKind::Error, (path, span.clone()))
-                .with_code(6)
-                .with_message("Invalid call expression.")
-                .with_label(
-                    Label::new((path, span.clone()))
-                        .with_message("invalid callee: an expression of function type is expected.")
-                        .with_color(Color::Red),
-                ),
-            Error::InvalidDeref(span) => Report::build(ReportKind::Error, (path, span.clone()))
-                .with_code(7)
-                .with_message("Invalid dereference expression.")
-                .with_label(
-                    Label::new((path, span.clone()))
-                        .with_message("this expression cannot be dereferenced.")
-                        .with_color(Color::Red),
-                ),
-            Error::InvalidField(span, index) => {
-                Report::build(ReportKind::Error, (path, span.clone()))
-                    .with_code(8)
-                    .with_message("Invalid field index expression.")
-                    .with_label(
-                        Label::new((path, index.span.clone()))
-                            .with_message(format!(
-                                "the expression cannot be accessed with index {}.",
-                                index.item
-                            ))
-                            .with_color(Color::Red),
-                    )
-            }
-            Error::UnassignableExpr(span) => Report::build(ReportKind::Error, (path, span.clone()))
-                .with_code(9)
-                .with_message("Invalid assignment expression.")
-                .with_label(
-                    Label::new((path, span.clone()))
-                        .with_message("cannot assign to an expression that is not a dereference, a field index or a variable.")
-                        .with_color(Color::Red),
-                ),
-            Error::UndefinedName(name) => Report::build(ReportKind::Error, (path, name.span.clone()))
-                .with_code(10)
-                .with_message("Undefined name.")
-                .with_label(
-                    Label::new((path, name.span.clone()))
-                        .with_message(format!(
-                            "no function or variable named {} in scope.",
-                            name.item
-                        ))
-                        .with_color(Color::Red),
-                ),
-            Error::UndefinedOrigin(name) => Report::build(ReportKind::Error, (path, name.span.clone()))
-                .with_code(11)
-                .with_message("Undefined origin.")
-                .with_label(
-                    Label::new((path, name.span.clone()))
-                        .with_message(format!(
-                            "unknown origin {}.",
-                            name.item
-                        ))
-                        .with_color(Color::Red),
-                ),
-            Error::UndefinedType(name) => Report::build(ReportKind::Error, (path, name.span.clone()))
-                .with_code(12)
-                .with_message("Unkown type.")
-                .with_label(
-                    Label::new((path, name.span.clone()))
-                        .with_message(format!(
-                            "cannot determine the type of {}. Annotate the variable with a type or assign it with an initial value.",
-                            name.item
-                        ))
-                        .with_color(Color::Red),
-                ),
-        }
-        .finish()
-        .eprint((path, Source::from(contents)))
-        .unwrap()
-    }
 }
 
 /// An AST to IR lowerer.
@@ -309,7 +183,7 @@ impl<'m> Lowerer<'m> {
         let origin_id = if let Some(name) = origin {
             self.origin_ids
                 .get::<str>(&name.item)
-                .map_or(Err(vec![Error::UndefinedOrigin(name.clone())]), |id| {
+                .map_or(Err(vec![Error::UndefinedOrigin(name.span.clone())]), |id| {
                     Ok(Some(*id))
                 })?
         } else {
@@ -504,7 +378,7 @@ impl<'m> Lowerer<'m> {
 
         let ty = match ty.item {
             ir::Type::Fn(_, result) => *result,
-            _ => return Err(vec![Error::InvalidCallee(callee.span.clone())]),
+            _ => return Err(vec![Error::InvalidCallee(ty.clone())]),
         };
         self.locals.push(Local {
             mutable: true,
@@ -555,7 +429,7 @@ impl<'m> Lowerer<'m> {
         span: &Span,
     ) -> Result<(ir::Block, Spanned<Operand>, Spanned<ir::Type>)> {
         let (instrs, operand, ty) = self.expr(&expr.item, &expr.span)?;
-        match (operand.item, ty.item) {
+        match (operand.item, &ty.item) {
             (Operand::Place(p), ir::Type::Tuple(tys)) => {
                 if index.item < tys.len() {
                     Ok((
@@ -570,10 +444,10 @@ impl<'m> Lowerer<'m> {
                         tys[index.item].clone(),
                     ))
                 } else {
-                    Err(vec![Error::InvalidField(span.clone(), index.clone())])
+                    Err(vec![Error::InvalidField(ty.clone(), index.clone())])
                 }
             }
-            _ => Err(vec![Error::InvalidField(span.clone(), index.clone())]),
+            _ => Err(vec![Error::InvalidField(ty.clone(), index.clone())]),
         }
     }
 
@@ -584,16 +458,16 @@ impl<'m> Lowerer<'m> {
         span: &Span,
     ) -> Result<(ir::Block, Spanned<Operand>, Spanned<ir::Type>)> {
         let (instrs, operand, ty) = self.expr(&expr.item, &expr.span)?;
-        match (operand.item, ty.item) {
+        match (operand.item, &ty.item) {
             (Operand::Place(p), ir::Type::Ref(_, _, ty)) => Ok((
                 instrs,
                 Spanned::new(
                     Operand::Place(Place::Deref(Box::new(Spanned::new(p, expr.span.clone())))),
                     span.clone(),
                 ),
-                *ty,
+                *ty.clone(),
             )),
-            _ => Err(vec![Error::InvalidDeref(expr.span.clone())]),
+            _ => Err(vec![Error::InvalidDeref(ty.clone())]),
         }
     }
 
@@ -674,7 +548,7 @@ impl<'m> Lowerer<'m> {
             None => match self.globals.get::<str>(name.item.as_ref()) {
                 Some(ty) => {
                     let args = self.origin_args(origin_args)?;
-                    let ty_instance = substitute(ty, &args);
+                    let ty_instance = ty.substitute(&args);
                     Ok((
                         Spanned::new(
                             Operand::Place(Place::Global(name.clone(), args)),
@@ -697,7 +571,7 @@ impl<'m> Lowerer<'m> {
             match arg {
                 Some(name) => match self.origin_ids.get::<str>(name.item.as_ref()) {
                     Some(id) => origin_ids.push(Some(*id)),
-                    None => errors.push(Error::UndefinedOrigin(name.clone())),
+                    None => errors.push(Error::UndefinedOrigin(name.span.clone())),
                 },
                 None => origin_ids.push(None),
             }
