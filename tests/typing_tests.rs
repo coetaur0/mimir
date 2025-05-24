@@ -25,12 +25,17 @@ fn functions() {
 #[test]
 fn statements() {
     check_ok("fn f() -> i32 { let x: i32; x = 42; g(); return x; x } fn g() {}");
+    check_ok("fn loop() { let mut cond = true; while cond { cond = false; } }");
     check_err(
         "fn f() -> i32 { return false }",
         vec![
             Error::IncompatibleTypes(Type::I32, Spanned::new(Type::Bool, 23..28)),
             Error::IncompatibleTypes(Type::I32, Spanned::new(Type::Tuple(Vec::new()), 30..30)),
         ],
+    );
+    check_err(
+        "fn main() { while 0 {} }",
+        vec![Error::InvalidCondition(Spanned::new(Type::I32, 18..19))],
     );
 }
 

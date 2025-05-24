@@ -28,6 +28,8 @@ pub enum Token {
     BoolKw,
     #[token("mut")]
     MutKw,
+    #[token("while")]
+    WhileKw,
     #[token("let")]
     LetKw,
     #[token("return")]
@@ -93,6 +95,7 @@ impl fmt::Display for Token {
             Token::I32Kw => write!(f, "the 'i32' keyword"),
             Token::BoolKw => write!(f, "the 'bool' keyword"),
             Token::MutKw => write!(f, "the 'mut' keyword"),
+            Token::WhileKw => write!(f, "the 'while' keyword"),
             Token::LetKw => write!(f, "the 'let' keyword"),
             Token::ReturnKw => write!(f, "the 'return' keyword"),
             Token::IfKw => write!(f, "the 'if' keyword"),
@@ -268,10 +271,20 @@ impl<'src> Parser<'src> {
     /// Parse a statement.
     fn stmt(&mut self) -> Result<Spanned<Stmt>> {
         match self.token {
+            Token::WhileKw => self.while_stmt(),
             Token::LetKw => self.let_stmt(),
             Token::ReturnKw => self.return_stmt(),
             _ => self.expr_stmt(),
         }
+    }
+
+    /// Parse a while statement.
+    fn while_stmt(&mut self) -> Result<Spanned<Stmt>> {
+        let start = self.consume().span.start;
+        let cond = self.expr()?;
+        let body = self.block()?;
+        let span = start..body.span.end;
+        Ok(Spanned::new(Stmt::While(cond, body), span))
     }
 
     /// Parse a let statement.

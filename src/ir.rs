@@ -55,6 +55,7 @@ pub type Block = Vec<Instruction>;
 /// An IR instruction.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Instruction {
+    While(Spanned<Operand>, Block),
     If(Spanned<Operand>, Block, Block),
     Call(Spanned<Place>, Spanned<Place>, Vec<Spanned<Operand>>),
     Borrow(Spanned<Place>, bool, Spanned<Place>),

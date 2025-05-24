@@ -35,6 +35,7 @@ fn functions() {
 #[test]
 fn statements() {
     check_ok("fn main() { let x: i32 = 42; let b: bool; b = true; let c = 1; g(); return b }");
+    check_ok("fn loop() { let mut cond = true; while cond { cond = false; } }");
     check_err(
         "fn main() { let x i32; }",
         vec![Error::UnclosedDelimiter(

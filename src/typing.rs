@@ -124,6 +124,7 @@ impl<'m> TypeChecker<'m> {
     /// Type check an instruction.
     fn instr(&self, instr: &Instruction) -> Result<()> {
         match &instr {
+            Instruction::While(cond, body) => self.loop_instr(cond, body),
             Instruction::If(cond, then, els) => self.conditional_instr(cond, then, els),
             Instruction::Call(target, callee, args) => self.call_instr(target, callee, args),
             Instruction::Borrow(target, mutable, place) => {
@@ -131,6 +132,20 @@ impl<'m> TypeChecker<'m> {
             }
             Instruction::Value(target, operand) => self.value_instr(target, operand),
             Instruction::Return => Ok(()),
+        }
+    }
+
+    /// Type check a loop instruction.
+    fn loop_instr(&self, cond: &Spanned<Operand>, body: &Block) -> Result<()> {
+        match self.operand(cond)?.item {
+            Type::Bool => {
+                self.block(body)?;
+                Ok(())
+            }
+            ty => Err(vec![Error::InvalidCondition(Spanned::new(
+                ty,
+                cond.span.clone(),
+            ))]),
         }
     }
 

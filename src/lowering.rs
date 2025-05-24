@@ -217,11 +217,20 @@ impl<'m> Lowerer<'m> {
     /// Lower an AST statement to its IR representation.
     fn stmt(&mut self, stmt: &'m Spanned<Stmt>) -> Result<ir::Block> {
         match &stmt.item {
+            Stmt::While(cond, body) => self.while_stmt(cond, &body.item),
             Stmt::Let(mutable, name, ty, value) => self.let_stmt(*mutable, name, ty, value),
             Stmt::Assign(lhs, rhs) => self.assign_stmt(lhs, rhs),
             Stmt::Return(value) => self.return_stmt(value),
             Stmt::Expr(expr) => Ok(self.expr(expr, &stmt.span)?.0),
         }
+    }
+
+    /// Lower an AST while statement to its IR representation.
+    fn while_stmt(&mut self, cond: &'m Spanned<Expr>, body: &'m ast::Block) -> Result<ir::Block> {
+        let (mut instrs, cond_op, _) = self.expr(&cond.item, &cond.span)?;
+        let (body_instrs, _, _) = self.block_expr(body)?;
+        instrs.push(Instruction::While(cond_op, body_instrs));
+        Ok(instrs)
     }
 
     /// Lower an AST let statement to its IR representation.

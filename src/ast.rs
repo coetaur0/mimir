@@ -55,6 +55,7 @@ pub struct Block {
 /// A statement.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Stmt {
+    While(Spanned<Expr>, Spanned<Block>),
     Let(
         bool,
         Spanned<String>,

@@ -30,6 +30,7 @@ fn functions() {
 #[test]
 fn statements() {
     check_ok("fn f() -> i32 { let x: i32; x = 42; g(); return x; x } fn g() {}");
+    check_ok("fn loop() { let mut cond = true; while cond { cond = false; } }");
     check_err(
         "fn main() { let x; }",
         vec![Error::UndefinedType(Spanned::new("x".to_string(), 16..17))],
