@@ -1,4 +1,4 @@
-use mim::{
+use mimir::{
     parsing::*,
     reporting::{Error, Spanned},
 };

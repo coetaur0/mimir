@@ -1,4 +1,4 @@
-//! Error reporting types and functions.
+//! Error reporting module.
 
 use std::{ops::Range, result};
 

@@ -1,4 +1,4 @@
-//! Type checking functions.
+//! Type checking module.
 
 use crate::{
     ir::*,

@@ -1,4 +1,4 @@
-//! AST to IR lowering functions.
+//! AST to IR lowering module.
 
 use std::{collections::HashMap, mem};
 

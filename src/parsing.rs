@@ -1,4 +1,4 @@
-//! Parsing functions.
+//! Parsing module.
 
 use std::{collections::HashMap, fmt};
 

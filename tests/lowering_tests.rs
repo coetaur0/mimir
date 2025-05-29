@@ -1,4 +1,4 @@
-use mim::{
+use mimir::{
     ir::Type,
     lowering::lower,
     parsing::parse,
