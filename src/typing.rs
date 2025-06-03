@@ -124,19 +124,19 @@ impl<'m> TypeChecker<'m> {
     /// Type check an instruction.
     fn instr(&self, instr: &Instruction) -> Result<()> {
         match &instr {
-            Instruction::While(cond, body) => self.loop_instr(cond, body),
-            Instruction::If(cond, then, els) => self.conditional_instr(cond, then, els),
+            Instruction::While(cond, body) => self.while_instr(cond, body),
+            Instruction::If(cond, then, els) => self.if_instr(cond, then, els),
             Instruction::Call(target, callee, args) => self.call_instr(target, callee, args),
             Instruction::Borrow(target, mutable, place) => {
                 self.borrow_instr(target, *mutable, place)
             }
-            Instruction::Value(target, operand) => self.value_instr(target, operand),
+            Instruction::Assign(target, operand) => self.assign_instr(target, operand),
             Instruction::Return => Ok(()),
         }
     }
 
     /// Type check a loop instruction.
-    fn loop_instr(&self, cond: &Spanned<Operand>, body: &Block) -> Result<()> {
+    fn while_instr(&self, cond: &Spanned<Operand>, body: &Block) -> Result<()> {
         match self.operand(cond)?.item {
             Type::Bool => {
                 self.block(body)?;
@@ -150,7 +150,7 @@ impl<'m> TypeChecker<'m> {
     }
 
     /// Type check a conditional instruction.
-    fn conditional_instr(&self, cond: &Spanned<Operand>, then: &Block, els: &Block) -> Result<()> {
+    fn if_instr(&self, cond: &Spanned<Operand>, then: &Block, els: &Block) -> Result<()> {
         match self.operand(cond)?.item {
             Type::Bool => {
                 self.block(then)?;
@@ -238,7 +238,7 @@ impl<'m> TypeChecker<'m> {
     }
 
     /// Type check an assignment instruction.
-    fn value_instr(&self, target: &Spanned<Place>, value: &Spanned<Operand>) -> Result<()> {
+    fn assign_instr(&self, target: &Spanned<Place>, value: &Spanned<Operand>) -> Result<()> {
         let (_, target_ty) = self.place(target)?;
         let value_ty = self.operand(value)?;
         if !value_ty.subtype_of(&target_ty) {

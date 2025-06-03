@@ -109,7 +109,7 @@ impl<'m> Lowerer<'m> {
             let (mut instrs, op, _) = self.block_expr(&function.body)?;
             let span = op.span.clone();
             // Assign the body's result to the function's return local in the IR.
-            instrs.push(Instruction::Value(Spanned::new(Place::Local(0), span), op));
+            instrs.push(Instruction::Assign(Spanned::new(Place::Local(0), span), op));
             Ok(ir::Function {
                 origin_count: self.origin_ids.len(),
                 param_count: function.params.len(),
@@ -249,7 +249,7 @@ impl<'m> Lowerer<'m> {
 
         let (instrs, op_ty) = if let Some(expr) = value {
             let (mut i, o, t) = self.expr(&expr.item, &expr.span)?;
-            i.push(Instruction::Value(
+            i.push(Instruction::Assign(
                 Spanned::new(Place::Local(self.locals.len()), name.span.clone()),
                 o,
             ));
@@ -283,7 +283,7 @@ impl<'m> Lowerer<'m> {
         match l_op.item {
             Operand::Place(p) => {
                 instrs.extend(l_instrs);
-                instrs.push(Instruction::Value(Spanned::new(p, lhs.span.clone()), r_op));
+                instrs.push(Instruction::Assign(Spanned::new(p, lhs.span.clone()), r_op));
                 Ok(instrs)
             }
             _ => Err(vec![Error::UnassignableExpr(lhs.span.clone())]),
@@ -293,7 +293,7 @@ impl<'m> Lowerer<'m> {
     /// Lower an AST return statement to its IR representation.
     fn return_stmt(&mut self, value: &'m Spanned<Expr>) -> Result<ir::Block> {
         let (mut instrs, op, _) = self.expr(&value.item, &value.span)?;
-        instrs.push(Instruction::Value(
+        instrs.push(Instruction::Assign(
             Spanned::new(Place::Local(0), value.span.clone()),
             op,
         ));
@@ -349,8 +349,8 @@ impl<'m> Lowerer<'m> {
             ty: then_ty.clone(),
         });
         let target = Spanned::new(Place::Local(self.locals.len() - 1), span.clone());
-        then_instrs.push(Instruction::Value(target.clone(), then_op));
-        els_instrs.push(Instruction::Value(target.clone(), els_op));
+        then_instrs.push(Instruction::Assign(target.clone(), then_op));
+        els_instrs.push(Instruction::Assign(target.clone(), els_op));
         instrs.push(Instruction::If(cond_op, then_instrs, els_instrs));
         Ok((
             instrs,
@@ -603,7 +603,7 @@ impl<'m> Lowerer<'m> {
                     ty: ty.clone(),
                 });
                 let place = Spanned::new(Place::Local(self.locals.len() - 1), operand.span.clone());
-                (vec![Instruction::Value(place.clone(), operand)], place)
+                (vec![Instruction::Assign(place.clone(), operand)], place)
             }
         }
     }

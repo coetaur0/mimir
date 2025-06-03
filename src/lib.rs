@@ -2,6 +2,7 @@ use std::{fs, process};
 
 use crate::reporting::Error;
 
+pub mod analysis;
 pub mod ast;
 pub mod ir;
 pub mod lowering;
@@ -20,7 +21,14 @@ pub fn compile(path: &str) {
         .map(|ast| {
             lowering::lower(&ast)
                 .map(|ir| {
-                    typing::check(&ir).unwrap_or_else(|errors| print_errors(&errors, path, &src))
+                    typing::check(&ir).unwrap_or_else(|errors| print_errors(&errors, path, &src));
+                    for (name, function) in ir.functions {
+                        println!("{}: {:#?}", name, function);
+                        let sets = analysis::live(&function.body);
+                        for set in sets.iter().rev() {
+                            println!("    {:?}", set);
+                        }
+                    }
                 })
                 .unwrap_or_else(|errors| print_errors(&errors, path, &src))
         })

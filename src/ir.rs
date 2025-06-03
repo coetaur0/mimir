@@ -59,7 +59,7 @@ pub enum Instruction {
     If(Spanned<Operand>, Block, Block),
     Call(Spanned<Place>, Spanned<Place>, Vec<Spanned<Operand>>),
     Borrow(Spanned<Place>, bool, Spanned<Place>),
-    Value(Spanned<Place>, Spanned<Operand>),
+    Assign(Spanned<Place>, Spanned<Operand>),
     Return,
 }
 
