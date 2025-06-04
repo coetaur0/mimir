@@ -3,11 +3,9 @@
 use std::{collections::HashMap, fmt};
 
 use logos::{Lexer, Logos};
+use mimir::reporting::{Error, Result, Span, Spanned};
 
-use crate::{
-    ast::*,
-    reporting::{Error, Result, Span, Spanned},
-};
+use crate::ast::*;
 
 /// Parse a Mim module.
 pub fn parse(src: &str) -> Result<Module> {
@@ -252,8 +250,8 @@ impl<'src> Parser<'src> {
         } else {
             errors.push(Error::UnclosedDelimiter(
                 open,
-                Token::RBrace,
-                Spanned::new(self.token, self.span()),
+                Token::RBrace.to_string(),
+                Spanned::new(self.token.to_string(), self.span()),
             ));
             return Err(errors);
         };
@@ -589,8 +587,8 @@ impl<'src> Parser<'src> {
         } else {
             Err(vec![Error::UnclosedDelimiter(
                 open,
-                close,
-                Spanned::new(self.token, self.span()),
+                close.to_string(),
+                Spanned::new(self.token.to_string(), self.span()),
             )])
         }
     }
@@ -677,7 +675,7 @@ impl<'src> Parser<'src> {
     fn expected(&self, message: String) -> Vec<Error> {
         vec![Error::UnexpectedToken(
             message,
-            Spanned::new(self.token, self.span()),
+            Spanned::new(self.token.to_string(), self.span()),
         )]
     }
 

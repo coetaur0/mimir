@@ -1,6 +1,6 @@
 use std::{env, process};
 
-use mimir::compile;
+use mim::compile;
 
 fn main() {
     let args: Vec<String> = env::args().collect();

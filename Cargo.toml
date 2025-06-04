@@ -1,12 +1,3 @@
-[package]
-name = "mimir"
-version = "0.1.0"
-authors = ["Aurelien Coet <aurelien.coet@outlook.com>"]
-edition = "2024"
-readme = "README.md"
-repository = "https://github.com/coetaur0/mimir"
-license = "MIT"
-
-[dependencies]
-ariadne = { version = "0.5.1", features = ["auto-color"] }
-logos = "0.15.0"
+[workspace]
+resolver = "3"
+members = ["mim", "mimir"]

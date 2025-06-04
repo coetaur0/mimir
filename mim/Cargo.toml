@@ -1,0 +1,11 @@
+[package]
+name = "mim"
+version = "0.1.0"
+authors = ["Aurelien Coet <aurelien.coet@outlook.com>"]
+edition = "2024"
+repository = "https://github.com/coetaur0/mimir"
+license = "MIT"
+
+[dependencies]
+logos = "0.15.0"
+mimir = { path = "../mimir" }

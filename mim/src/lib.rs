@@ -1,14 +1,10 @@
 use std::{fs, process};
 
-use crate::reporting::Error;
+use mimir::{analysis, reporting::Error, typing};
 
-pub mod analysis;
 pub mod ast;
-pub mod ir;
 pub mod lowering;
 pub mod parsing;
-pub mod reporting;
-pub mod typing;
 
 /// Compile the module in a file at some `path`.
 pub fn compile(path: &str) {

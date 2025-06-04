@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::reporting::Spanned;
+use mimir::reporting::Spanned;
 
 /// A module.
 #[derive(Debug)]

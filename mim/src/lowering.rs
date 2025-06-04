@@ -1,12 +1,13 @@
-//! AST to IR lowering module.
+//! Mim AST to MIMIR lowering module.
 
 use std::{collections::HashMap, mem};
 
-use crate::{
-    ast::{self, Expr, Parameter, Stmt},
+use mimir::{
     ir::{self, Instruction, Local, LocalId, Operand, OriginId, Place},
     reporting::{Error, Result, Span, Spanned},
 };
+
+use crate::ast::{self, Expr, Parameter, Stmt};
 
 /// Lower an AST module to its IR representation.
 pub fn lower(module: &ast::Module) -> Result<ir::Module> {

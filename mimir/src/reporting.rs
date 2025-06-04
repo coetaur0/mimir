@@ -4,7 +4,7 @@ use std::{ops::Range, result};
 
 use ariadne::{Color, Label, Report, ReportKind, Source};
 
-use crate::{ir::Type, parsing::Token};
+use crate::ir::Type;
 
 /// A span between two offsets in a source.
 pub type Span = Range<usize>;
@@ -43,13 +43,13 @@ pub enum Error {
     OriginNeeded(Span),
     UnassignableExpr(Span),
     UnauthorizedBorrow(Span),
-    UnclosedDelimiter(Spanned<String>, Token, Spanned<Token>),
+    UnclosedDelimiter(Spanned<String>, String, Spanned<String>),
     UndefinedGlobal(Spanned<String>),
     UndefinedLocal(Span),
     UndefinedName(Spanned<String>),
     UndefinedOrigin(Span),
     UndefinedType(Spanned<String>),
-    UnexpectedToken(String, Spanned<Token>),
+    UnexpectedToken(String, Spanned<String>),
 }
 
 impl Error {

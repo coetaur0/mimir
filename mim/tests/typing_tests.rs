@@ -1,7 +1,6 @@
+use mim::{lowering::lower, parsing::parse};
 use mimir::{
     ir::Type,
-    lowering::lower,
-    parsing::parse,
     reporting::{Error, Spanned},
     typing::check,
 };

@@ -56,11 +56,11 @@ pub fn live(instrs: &[Instruction]) -> Vec<HashSet<Path>> {
         local: 0,
         fields: Vec::new(),
     }]);
-    live_seq(after, instrs.iter().rev())
+    live_instrs(after, instrs.iter().rev())
 }
 
 /// Compute the sets of live-before paths for a sequence of instructions.
-fn live_seq<'i, I>(mut after: HashSet<Path>, instrs: I) -> Vec<HashSet<Path>>
+fn live_instrs<'i, I>(mut after: HashSet<Path>, instrs: I) -> Vec<HashSet<Path>>
 where
     I: Iterator<Item = &'i Instruction>,
 {
@@ -109,7 +109,7 @@ fn live_while(
 ) -> Vec<HashSet<Path>> {
     let mut before = HashSet::<Path>::from(&cond.item);
     loop {
-        let mut sets = live_seq(after, body.iter().rev());
+        let mut sets = live_instrs(after, body.iter().rev());
         let mut diff = before.clone();
         diff.extend(sets.last().unwrap().clone());
         if diff == before {
@@ -129,8 +129,8 @@ fn live_if(
     then: &[Instruction],
     els: &[Instruction],
 ) -> Vec<HashSet<Path>> {
-    let live_then = live_seq(after.clone(), then.iter().rev());
-    let mut sets = live_seq(after.clone(), els.iter().rev());
+    let live_then = live_instrs(after.clone(), then.iter().rev());
+    let mut sets = live_instrs(after.clone(), els.iter().rev());
     let mut before = HashSet::<Path>::from(&cond.item);
     before.extend(live_then.last().unwrap().clone());
     before.extend(sets.last().unwrap().clone());
