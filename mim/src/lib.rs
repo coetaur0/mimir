@@ -20,7 +20,7 @@ pub fn compile(path: &str) {
                     typing::check(&ir).unwrap_or_else(|errors| print_errors(&errors, path, &src));
                     for (name, function) in ir.functions {
                         println!("{}: {:#?}", name, function);
-                        let sets = analysis::live(&function.body);
+                        let sets = analysis::liveness(&function.body);
                         for set in sets.iter().rev() {
                             println!("    {:?}", set);
                         }

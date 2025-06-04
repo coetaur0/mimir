@@ -14,11 +14,11 @@ fn functions() {
     check_err(
         "fn f(x i32, y: 3) {}",
         vec![
-            Error::UnexpectedToken(
+            Error::UnexpectedSymbol(
                 "a ':'".to_string(),
                 Spanned::new(Token::I32Kw.to_string(), 7..10),
             ),
-            Error::UnexpectedToken(
+            Error::UnexpectedSymbol(
                 "a type expression".to_string(),
                 Spanned::new(Token::IntLit.to_string(), 15..16),
             ),
@@ -26,7 +26,7 @@ fn functions() {
     );
     check_err(
         "fn f() -> {}",
-        vec![Error::UnexpectedToken(
+        vec![Error::UnexpectedSymbol(
             "a type expression".to_string(),
             Spanned::new(Token::LBrace.to_string(), 10..11),
         )],
@@ -53,21 +53,21 @@ fn statements() {
     );
     check_err(
         "fn main() { let x: 43; }",
-        vec![Error::UnexpectedToken(
+        vec![Error::UnexpectedSymbol(
             "a type expression".to_string(),
             Spanned::new(Token::IntLit.to_string(), 19..21),
         )],
     );
     check_err(
         "fn main() { x = }",
-        vec![Error::UnexpectedToken(
+        vec![Error::UnexpectedSymbol(
             "an expression".to_string(),
             Spanned::new(Token::RBrace.to_string(), 16..17),
         )],
     );
     check_err(
         "fn main() { return }",
-        vec![Error::UnexpectedToken(
+        vec![Error::UnexpectedSymbol(
             "an expression".to_string(),
             Spanned::new(Token::RBrace.to_string(), 19..20),
         )],
@@ -79,7 +79,7 @@ fn expressions() {
     check_ok("fn main() { if b() { *r } else if c { &mut v } else { (0, false).0 } }");
     check_err(
         "fn main() { if true 32 else false }",
-        vec![Error::UnexpectedToken(
+        vec![Error::UnexpectedSymbol(
             "a '{'".to_string(),
             Spanned::new(Token::IntLit.to_string(), 20..22),
         )],
@@ -94,14 +94,14 @@ fn expressions() {
     );
     check_err(
         "fn main() { &i32 }",
-        vec![Error::UnexpectedToken(
+        vec![Error::UnexpectedSymbol(
             "an expression".to_string(),
             Spanned::new(Token::I32Kw.to_string(), 13..16),
         )],
     );
     check_err(
         "fn main() { t.true }",
-        vec![Error::UnexpectedToken(
+        vec![Error::UnexpectedSymbol(
             "an integer literal".to_string(),
             Spanned::new(Token::TrueLit.to_string(), 14..18),
         )],
@@ -113,14 +113,14 @@ fn types() {
     check_ok("fn f<'a, 'b>(x: &'a i32, f: fn(i32, i32) -> (bool, bool)) -> bool { }");
     check_err(
         "fn f(x: 3) {}",
-        vec![Error::UnexpectedToken(
+        vec![Error::UnexpectedSymbol(
             "a type expression".to_string(),
             Spanned::new(Token::IntLit.to_string(), 8..9),
         )],
     );
     check_err(
         "fn f(x: fn( -> bool) {}",
-        vec![Error::UnexpectedToken(
+        vec![Error::UnexpectedSymbol(
             "a type expression".to_string(),
             Spanned {
                 item: Token::Arrow.to_string(),

@@ -673,7 +673,7 @@ impl<'src> Parser<'src> {
     /// Return a syntax error indicating that something else than the next token was expected in
     /// the source.
     fn expected(&self, message: String) -> Vec<Error> {
-        vec![Error::UnexpectedToken(
+        vec![Error::UnexpectedSymbol(
             message,
             Spanned::new(self.token.to_string(), self.span()),
         )]

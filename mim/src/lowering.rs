@@ -1,4 +1,4 @@
-//! Mim AST to MIMIR lowering module.
+//! Mim to Mimir lowering module.
 
 use std::{collections::HashMap, mem};
 

@@ -23,7 +23,7 @@ impl<T> Spanned<T> {
     }
 }
 
-/// A compiler result.
+/// A compilation result.
 pub type Result<T> = result::Result<T, Vec<Error>>;
 
 /// A compilation error.
@@ -49,7 +49,7 @@ pub enum Error {
     UndefinedName(Spanned<String>),
     UndefinedOrigin(Span),
     UndefinedType(Spanned<String>),
-    UnexpectedToken(String, Spanned<String>),
+    UnexpectedSymbol(String, Spanned<String>),
 }
 
 impl Error {
@@ -298,7 +298,7 @@ impl Error {
                             .with_color(Color::Red),
                     )
             }
-            Error::UnexpectedToken(expected, found) => {
+            Error::UnexpectedSymbol(expected, found) => {
                 Report::build(ReportKind::Error, (path, found.span.clone()))
                     .with_code(21)
                     .with_message("Unexpected symbol.")
