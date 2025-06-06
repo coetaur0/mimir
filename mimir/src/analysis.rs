@@ -3,57 +3,57 @@
 use std::collections::HashSet;
 
 use crate::{
-    ir::{Instruction, LocalId, Operand, Place},
+    ir::{LocalId, Operand, Place, Statement},
     reporting::Spanned,
 };
 
 /// Compute the sets of live-before paths for a function body.
-pub fn liveness(instrs: &[Instruction]) -> Vec<HashSet<Path>> {
+pub fn liveness(stmts: &[Statement]) -> Vec<HashSet<Path>> {
     // At the end of a function's body, only its return value is live.
     let state = HashSet::from([Path {
         local: 0,
         fields: Vec::new(),
     }]);
     // Liveness analysis is a backwards analysis, hence the call to `rev`.
-    LivenessAnalysis::visit(state, instrs.iter().rev())
+    LivenessAnalysis::visit(state, stmts.iter().rev())
 }
 
-/// An abstract interpreter for Mimir instructions.
+/// An abstract interpreter for Mimir statements.
 pub trait AbstractInterpreter {
     /// The domain of the states manipulated by the abstract interpreter.
     type Domain: Clone;
 
-    /// Visit a sequence of instructions and compute their abstract states, given some initial state.
-    fn visit<'i, I>(mut state: Self::Domain, instrs: I) -> Vec<Self::Domain>
+    /// Visit a sequence of statements and compute their abstract states, given some initial state.
+    fn visit<'i, I>(mut state: Self::Domain, stmts: I) -> Vec<Self::Domain>
     where
-        I: Iterator<Item = &'i Instruction>,
+        I: Iterator<Item = &'i Statement>,
     {
         let mut states = Vec::new();
-        for instr in instrs {
+        for instr in stmts {
             match instr {
-                Instruction::While(cond, body) => {
+                Statement::While(cond, body) => {
                     let body_states = Self::visit_while(state, cond, body);
                     state = body_states.last().unwrap().clone();
                     states.extend(body_states);
                 }
-                Instruction::If(cond, then, els) => {
+                Statement::If(cond, then, els) => {
                     let body_states = Self::visit_if(state, cond, then, els);
                     state = body_states.last().unwrap().clone();
                     states.extend(body_states);
                 }
-                Instruction::Call(target, callee, args) => {
+                Statement::Call(target, callee, args) => {
                     state = Self::visit_call(state, target, callee, args);
                     states.push(state.clone());
                 }
-                Instruction::Borrow(target, _, place) => {
+                Statement::Borrow(target, _, place) => {
                     state = Self::visit_borrow(state, target, place);
                     states.push(state.clone());
                 }
-                Instruction::Assign(target, value) => {
+                Statement::Assign(target, value) => {
                     state = Self::visit_assign(state, target, value);
                     states.push(state.clone());
                 }
-                Instruction::Return => {
+                Statement::Return => {
                     state = Self::visit_return(state);
                     states.push(state.clone());
                 }
@@ -65,24 +65,24 @@ pub trait AbstractInterpreter {
         states
     }
 
-    /// Visit a loop instruction and compute the abstract states for the instructions it contains,
-    /// as well as for the instruction itself.
+    /// Visit a loop statement and compute the abstract states for the statements it contains, as
+    /// well as for the statement itself.
     fn visit_while(
         state: Self::Domain,
         cond: &Spanned<Operand>,
-        body: &[Instruction],
+        body: &[Statement],
     ) -> Vec<Self::Domain>;
 
-    /// Visit a conditional instruction and compute the abstract states for the instructions it
-    /// contains, as well as for the instruction itself.
+    /// Visit a conditional statement and compute the abstract states for the statements it
+    /// contains, as well as for the statement itself.
     fn visit_if(
         state: Self::Domain,
         cond: &Spanned<Operand>,
-        then: &[Instruction],
-        els: &[Instruction],
+        then: &[Statement],
+        els: &[Statement],
     ) -> Vec<Self::Domain>;
 
-    /// Visit a call instruction and compute an abstract state for it.
+    /// Visit a call statement and compute an abstract state for it.
     fn visit_call(
         state: Self::Domain,
         target: &Spanned<Place>,
@@ -90,25 +90,25 @@ pub trait AbstractInterpreter {
         args: &[Spanned<Operand>],
     ) -> Self::Domain;
 
-    /// Visit a borrow instruction and compute an abstract state for it.
+    /// Visit a borrow statement and compute an abstract state for it.
     fn visit_borrow(
         state: Self::Domain,
         target: &Spanned<Place>,
         place: &Spanned<Place>,
     ) -> Self::Domain;
 
-    /// Visit an assignment instruction and compute an abstract state for it.
+    /// Visit an assignment statement and compute an abstract state for it.
     fn visit_assign(
         state: Self::Domain,
         target: &Spanned<Place>,
         value: &Spanned<Operand>,
     ) -> Self::Domain;
 
-    /// Visit a return instruction and compute an abstract state for it.
+    /// Visit a return statement and compute an abstract state for it.
     fn visit_return(state: Self::Domain) -> Self::Domain;
 }
 
-/// An abstract interpreter that computes the sets of live-before paths for instructions.
+/// An abstract interpreter that computes the sets of live-before paths for statements.
 struct LivenessAnalysis;
 
 impl AbstractInterpreter for LivenessAnalysis {
@@ -117,7 +117,7 @@ impl AbstractInterpreter for LivenessAnalysis {
     fn visit_while(
         mut state: Self::Domain,
         cond: &Spanned<Operand>,
-        body: &[Instruction],
+        body: &[Statement],
     ) -> Vec<Self::Domain> {
         let mut before = HashSet::<Path>::from(&cond.item);
         loop {
@@ -137,8 +137,8 @@ impl AbstractInterpreter for LivenessAnalysis {
     fn visit_if(
         state: Self::Domain,
         cond: &Spanned<Operand>,
-        then: &[Instruction],
-        els: &[Instruction],
+        then: &[Statement],
+        els: &[Statement],
     ) -> Vec<Self::Domain> {
         let live_then = Self::visit(state.clone(), then.iter().rev());
         let mut states = Self::visit(state.clone(), els.iter().rev());
@@ -220,7 +220,7 @@ impl From<&Place> for Path {
 }
 
 impl From<&Operand> for HashSet<Path> {
-    /// Compute the set of paths that appear in an instruction operand.
+    /// Compute the set of paths that appear in a statement operand.
     fn from(value: &Operand) -> Self {
         match &value {
             Operand::Tuple(elems) => elems.iter().fold(HashSet::new(), |mut result, operand| {

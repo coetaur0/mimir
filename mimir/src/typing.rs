@@ -107,12 +107,12 @@ impl<'m> TypeChecker<'m> {
         Ok(())
     }
 
-    /// Type check a block of instructions.
+    /// Type check a block of statements.
     fn block(&self, block: &Block) -> Result<()> {
         let mut errors = Vec::new();
 
-        for instr in block {
-            self.instr(instr).unwrap_or_else(|errs| errors.extend(errs));
+        for stmt in block {
+            self.stmt(stmt).unwrap_or_else(|errs| errors.extend(errs));
         }
 
         if !errors.is_empty() {
@@ -121,22 +121,20 @@ impl<'m> TypeChecker<'m> {
         Ok(())
     }
 
-    /// Type check an instruction.
-    fn instr(&self, instr: &Instruction) -> Result<()> {
-        match &instr {
-            Instruction::While(cond, body) => self.while_instr(cond, body),
-            Instruction::If(cond, then, els) => self.if_instr(cond, then, els),
-            Instruction::Call(target, callee, args) => self.call_instr(target, callee, args),
-            Instruction::Borrow(target, mutable, place) => {
-                self.borrow_instr(target, *mutable, place)
-            }
-            Instruction::Assign(target, operand) => self.assign_instr(target, operand),
-            Instruction::Return => Ok(()),
+    /// Type check a statement.
+    fn stmt(&self, stmt: &Statement) -> Result<()> {
+        match &stmt {
+            Statement::While(cond, body) => self.while_stmt(cond, body),
+            Statement::If(cond, then, els) => self.if_stmt(cond, then, els),
+            Statement::Call(target, callee, args) => self.call_stmt(target, callee, args),
+            Statement::Borrow(target, mutable, place) => self.borrow_stmt(target, *mutable, place),
+            Statement::Assign(target, operand) => self.assign_stmt(target, operand),
+            Statement::Return => Ok(()),
         }
     }
 
-    /// Type check a loop instruction.
-    fn while_instr(&self, cond: &Spanned<Operand>, body: &Block) -> Result<()> {
+    /// Type check a loop statement.
+    fn while_stmt(&self, cond: &Spanned<Operand>, body: &Block) -> Result<()> {
         match self.operand(cond)?.item {
             Type::Bool => {
                 self.block(body)?;
@@ -149,8 +147,8 @@ impl<'m> TypeChecker<'m> {
         }
     }
 
-    /// Type check a conditional instruction.
-    fn if_instr(&self, cond: &Spanned<Operand>, then: &Block, els: &Block) -> Result<()> {
+    /// Type check a conditional statement.
+    fn if_stmt(&self, cond: &Spanned<Operand>, then: &Block, els: &Block) -> Result<()> {
         match self.operand(cond)?.item {
             Type::Bool => {
                 self.block(then)?;
@@ -164,8 +162,8 @@ impl<'m> TypeChecker<'m> {
         }
     }
 
-    /// Type check a call instruction.
-    fn call_instr(
+    /// Type check a call statement.
+    fn call_stmt(
         &self,
         target: &Spanned<Place>,
         callee: &Spanned<Operand>,
@@ -212,8 +210,8 @@ impl<'m> TypeChecker<'m> {
         }
     }
 
-    /// Type check a borrow instruction.
-    fn borrow_instr(
+    /// Type check a borrow statement.
+    fn borrow_stmt(
         &self,
         target: &Spanned<Place>,
         mutable: bool,
@@ -237,8 +235,8 @@ impl<'m> TypeChecker<'m> {
         }
     }
 
-    /// Type check an assignment instruction.
-    fn assign_instr(&self, target: &Spanned<Place>, value: &Spanned<Operand>) -> Result<()> {
+    /// Type check an assignment statement.
+    fn assign_stmt(&self, target: &Spanned<Place>, value: &Spanned<Operand>) -> Result<()> {
         let (_, target_ty) = self.place(target)?;
         let value_ty = self.operand(value)?;
         if !value_ty.subtype_of(&target_ty) {
@@ -251,7 +249,7 @@ impl<'m> TypeChecker<'m> {
         }
     }
 
-    /// Type check an instruction operand.
+    /// Type check a statement operand.
     fn operand(&self, operand: &Spanned<Operand>) -> Result<Spanned<Type>> {
         match &operand.item {
             Operand::Tuple(elems) => self.tuple_operand(elems, &operand.span),

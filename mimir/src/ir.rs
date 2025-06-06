@@ -50,11 +50,11 @@ pub struct Local {
 }
 
 /// A block of instructions.
-pub type Block = Vec<Instruction>;
+pub type Block = Vec<Statement>;
 
-/// An IR instruction.
+/// An IR statement.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Instruction {
+pub enum Statement {
     While(Spanned<Operand>, Block),
     If(Spanned<Operand>, Block, Block),
     Call(Spanned<Place>, Spanned<Operand>, Vec<Spanned<Operand>>),

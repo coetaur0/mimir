@@ -3,7 +3,7 @@
 use std::{collections::HashMap, mem};
 
 use mimir::{
-    ir::{self, Instruction, Local, LocalId, Operand, OriginId, Place},
+    ir::{self, Local, LocalId, Operand, OriginId, Place, Statement},
     reporting::{Error, Result, Span, Spanned},
 };
 
@@ -107,15 +107,15 @@ impl<'m> Lowerer<'m> {
 
         // Lower the function's body.
         if errors.is_empty() {
-            let (mut instrs, op, _) = self.block_expr(&function.body)?;
+            let (mut stmts, op, _) = self.block_expr(&function.body)?;
             let span = op.span.clone();
             // Assign the body's result to the function's return local in the IR.
-            instrs.push(Instruction::Assign(Spanned::new(Place::Local(0), span), op));
+            stmts.push(Statement::Assign(Spanned::new(Place::Local(0), span), op));
             Ok(ir::Function {
                 origin_count: self.origin_ids.len(),
                 param_count: function.params.len(),
                 locals: mem::take(&mut self.locals),
-                body: instrs,
+                body: stmts,
             })
         } else {
             Err(errors)
@@ -228,10 +228,10 @@ impl<'m> Lowerer<'m> {
 
     /// Lower an AST while statement to its IR representation.
     fn while_stmt(&mut self, cond: &'m Spanned<Expr>, body: &'m ast::Block) -> Result<ir::Block> {
-        let (mut instrs, cond_op, _) = self.expr(&cond.item, &cond.span)?;
-        let (body_instrs, _, _) = self.block_expr(body)?;
-        instrs.push(Instruction::While(cond_op, body_instrs));
-        Ok(instrs)
+        let (mut stmts, cond_op, _) = self.expr(&cond.item, &cond.span)?;
+        let (body_stmts, _, _) = self.block_expr(body)?;
+        stmts.push(Statement::While(cond_op, body_stmts));
+        Ok(stmts)
     }
 
     /// Lower an AST let statement to its IR representation.
@@ -248,13 +248,13 @@ impl<'m> Lowerer<'m> {
             None
         };
 
-        let (instrs, op_ty) = if let Some(expr) = value {
-            let (mut i, o, t) = self.expr(&expr.item, &expr.span)?;
-            i.push(Instruction::Assign(
+        let (stmts, op_ty) = if let Some(expr) = value {
+            let (mut s, o, t) = self.expr(&expr.item, &expr.span)?;
+            s.push(Statement::Assign(
                 Spanned::new(Place::Local(self.locals.len()), name.span.clone()),
                 o,
             ));
-            (i, Some(t))
+            (s, Some(t))
         } else {
             (Vec::new(), None)
         };
@@ -269,7 +269,7 @@ impl<'m> Lowerer<'m> {
                     ty: ty.clone(),
                 });
                 self.local_ids.insert(&name.item, self.locals.len() - 1);
-                Ok(instrs)
+                Ok(stmts)
             }
             // If the let statement neither contains a type annotation nor a default value, we have
             // an error.
@@ -279,13 +279,13 @@ impl<'m> Lowerer<'m> {
 
     /// Lower an AST assignment statement to its IR representation.
     fn assign_stmt(&mut self, lhs: &'m Spanned<Expr>, rhs: &'m Spanned<Expr>) -> Result<ir::Block> {
-        let (mut instrs, r_op, _) = self.expr(&rhs.item, &rhs.span)?;
-        let (l_instrs, l_op, _) = self.expr(&lhs.item, &lhs.span)?;
+        let (mut stmts, r_op, _) = self.expr(&rhs.item, &rhs.span)?;
+        let (l_stmts, l_op, _) = self.expr(&lhs.item, &lhs.span)?;
         match l_op.item {
             Operand::Place(p) => {
-                instrs.extend(l_instrs);
-                instrs.push(Instruction::Assign(Spanned::new(p, lhs.span.clone()), r_op));
-                Ok(instrs)
+                stmts.extend(l_stmts);
+                stmts.push(Statement::Assign(Spanned::new(p, lhs.span.clone()), r_op));
+                Ok(stmts)
             }
             _ => Err(vec![Error::UnassignableExpr(lhs.span.clone())]),
         }
@@ -293,13 +293,13 @@ impl<'m> Lowerer<'m> {
 
     /// Lower an AST return statement to its IR representation.
     fn return_stmt(&mut self, value: &'m Spanned<Expr>) -> Result<ir::Block> {
-        let (mut instrs, op, _) = self.expr(&value.item, &value.span)?;
-        instrs.push(Instruction::Assign(
+        let (mut stmts, op, _) = self.expr(&value.item, &value.span)?;
+        stmts.push(Statement::Assign(
             Spanned::new(Place::Local(0), value.span.clone()),
             op,
         ));
-        instrs.push(Instruction::Return);
-        Ok(instrs)
+        stmts.push(Statement::Return);
+        Ok(stmts)
     }
 
     /// Lower an AST expression to its IR representation and type.
@@ -341,20 +341,20 @@ impl<'m> Lowerer<'m> {
         els: &'m Spanned<Expr>,
         span: &Span,
     ) -> Result<(ir::Block, Spanned<Operand>, Spanned<ir::Type>)> {
-        let (mut instrs, cond_op, _) = self.expr(&cond.item, &cond.span)?;
-        let (mut then_instrs, then_op, then_ty) = self.block_expr(&then.item)?;
-        let (mut els_instrs, els_op, _) = self.expr(&els.item, &els.span)?;
+        let (mut stmts, cond_op, _) = self.expr(&cond.item, &cond.span)?;
+        let (mut then_stmts, then_op, then_ty) = self.block_expr(&then.item)?;
+        let (mut els_stmts, els_op, _) = self.expr(&els.item, &els.span)?;
 
         self.locals.push(Local {
             mutable: true,
             ty: then_ty.clone(),
         });
         let target = Spanned::new(Place::Local(self.locals.len() - 1), span.clone());
-        then_instrs.push(Instruction::Assign(target.clone(), then_op));
-        els_instrs.push(Instruction::Assign(target.clone(), els_op));
-        instrs.push(Instruction::If(cond_op, then_instrs, els_instrs));
+        then_stmts.push(Statement::Assign(target.clone(), then_op));
+        els_stmts.push(Statement::Assign(target.clone(), els_op));
+        stmts.push(Statement::If(cond_op, then_stmts, els_stmts));
         Ok((
-            instrs,
+            stmts,
             Spanned::new(Operand::Place(target.item), target.span),
             Spanned::new(then_ty.item, span.clone()),
         ))
@@ -367,13 +367,13 @@ impl<'m> Lowerer<'m> {
         args: &'m [Spanned<Expr>],
         span: &Span,
     ) -> Result<(ir::Block, Spanned<Operand>, Spanned<ir::Type>)> {
-        let (mut instrs, operand, ty) = self.expr(&callee.item, &callee.span)?;
+        let (mut stmts, operand, ty) = self.expr(&callee.item, &callee.span)?;
 
         let mut operands = Vec::new();
         for arg in args {
             match self.expr(&arg.item, &arg.span) {
                 Ok((i, o, _)) => {
-                    instrs.extend(i);
+                    stmts.extend(i);
                     operands.push(o);
                 }
                 Err(errors) => return Err(errors),
@@ -389,10 +389,10 @@ impl<'m> Lowerer<'m> {
             ty: ty.clone(),
         });
         let target = Spanned::new(Place::Local(self.locals.len() - 1), span.clone());
-        instrs.push(Instruction::Call(target.clone(), operand, operands));
+        stmts.push(Statement::Call(target.clone(), operand, operands));
 
         Ok((
-            instrs,
+            stmts,
             Spanned::new(Operand::Place(target.item), target.span),
             ty,
         ))
@@ -405,9 +405,9 @@ impl<'m> Lowerer<'m> {
         expr: &'m Spanned<Expr>,
         span: &Span,
     ) -> Result<(ir::Block, Spanned<Operand>, Spanned<ir::Type>)> {
-        let (mut instrs, operand, ty) = self.expr(&expr.item, &expr.span)?;
-        let (place_instrs, place) = self.as_place(operand, &ty);
-        instrs.extend(place_instrs);
+        let (mut stmts, operand, ty) = self.expr(&expr.item, &expr.span)?;
+        let (place_stmts, place) = self.as_place(operand, &ty);
+        stmts.extend(place_stmts);
         let target_ty = Spanned::new(
             ir::Type::Ref(None, mutable, Box::new(ty.clone())),
             span.clone(),
@@ -417,9 +417,9 @@ impl<'m> Lowerer<'m> {
             ty: target_ty.clone(),
         });
         let target = Spanned::new(Place::Local(self.locals.len() - 1), span.clone());
-        instrs.push(Instruction::Borrow(target.clone(), mutable, place));
+        stmts.push(Statement::Borrow(target.clone(), mutable, place));
         Ok((
-            instrs,
+            stmts,
             Spanned::new(Operand::Place(target.item), target.span),
             target_ty,
         ))
@@ -432,12 +432,12 @@ impl<'m> Lowerer<'m> {
         index: &Spanned<usize>,
         span: &Span,
     ) -> Result<(ir::Block, Spanned<Operand>, Spanned<ir::Type>)> {
-        let (instrs, operand, ty) = self.expr(&expr.item, &expr.span)?;
+        let (stmts, operand, ty) = self.expr(&expr.item, &expr.span)?;
         match (operand.item, &ty.item) {
             (Operand::Place(p), ir::Type::Tuple(tys)) => {
                 if index.item < tys.len() {
                     Ok((
-                        instrs,
+                        stmts,
                         Spanned::new(
                             Operand::Place(Place::Field(
                                 Box::new(Spanned::new(p, expr.span.clone())),
@@ -461,10 +461,10 @@ impl<'m> Lowerer<'m> {
         expr: &'m Spanned<Expr>,
         span: &Span,
     ) -> Result<(ir::Block, Spanned<Operand>, Spanned<ir::Type>)> {
-        let (instrs, operand, ty) = self.expr(&expr.item, &expr.span)?;
+        let (stmts, operand, ty) = self.expr(&expr.item, &expr.span)?;
         match (operand.item, &ty.item) {
             (Operand::Place(p), ir::Type::Ref(_, _, ty)) => Ok((
-                instrs,
+                stmts,
                 Spanned::new(
                     Operand::Place(Place::Deref(Box::new(Spanned::new(p, expr.span.clone())))),
                     span.clone(),
@@ -481,7 +481,7 @@ impl<'m> Lowerer<'m> {
         elems: &'m [Spanned<Expr>],
         span: &Span,
     ) -> Result<(ir::Block, Spanned<Operand>, Spanned<ir::Type>)> {
-        let mut instrs = Vec::new();
+        let mut stmts = Vec::new();
         let mut operands = Vec::new();
         let mut tys = Vec::new();
         let mut errors = Vec::new();
@@ -489,8 +489,8 @@ impl<'m> Lowerer<'m> {
         for elem in elems {
             self.expr(&elem.item, &elem.span).map_or_else(
                 |errs| errors.extend(errs),
-                |(i, o, t)| {
-                    instrs.extend(i);
+                |(s, o, t)| {
+                    stmts.extend(s);
                     operands.push(o);
                     tys.push(t);
                 },
@@ -501,7 +501,7 @@ impl<'m> Lowerer<'m> {
             return Err(errors);
         }
         Ok((
-            instrs,
+            stmts,
             Spanned::new(Operand::Tuple(operands), span.clone()),
             Spanned::new(ir::Type::Tuple(tys), span.clone()),
         ))
@@ -513,12 +513,12 @@ impl<'m> Lowerer<'m> {
         block: &'m ast::Block,
     ) -> Result<(ir::Block, Spanned<Operand>, Spanned<ir::Type>)> {
         self.local_ids.push_scope(true);
-        let mut instrs = Vec::new();
+        let mut stmts = Vec::new();
         let mut errors = Vec::new();
 
         for stmt in &block.stmts {
             self.stmt(stmt)
-                .map_or_else(|errs| errors.extend(errs), |i| instrs.extend(i));
+                .map_or_else(|errs| errors.extend(errs), |s| stmts.extend(s));
         }
         if !errors.is_empty() {
             self.local_ids.pop_scope();
@@ -527,8 +527,8 @@ impl<'m> Lowerer<'m> {
 
         let result = match self.expr(&block.result.item, &block.result.span) {
             Ok((i, o, t)) => {
-                instrs.extend(i);
-                Ok((instrs, o, t))
+                stmts.extend(i);
+                Ok((stmts, o, t))
             }
             Err(errs) => Err(errs),
         };
@@ -598,7 +598,7 @@ impl<'m> Lowerer<'m> {
                     ty: ty.clone(),
                 });
                 let place = Spanned::new(Place::Local(self.locals.len() - 1), operand.span.clone());
-                (vec![Instruction::Assign(place.clone(), operand)], place)
+                (vec![Statement::Assign(place.clone(), operand)], place)
             }
         }
     }
