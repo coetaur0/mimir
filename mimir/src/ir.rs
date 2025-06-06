@@ -57,7 +57,7 @@ pub type Block = Vec<Instruction>;
 pub enum Instruction {
     While(Spanned<Operand>, Block),
     If(Spanned<Operand>, Block, Block),
-    Call(Spanned<Place>, Spanned<Place>, Vec<Spanned<Operand>>),
+    Call(Spanned<Place>, Spanned<Operand>, Vec<Spanned<Operand>>),
     Borrow(Spanned<Place>, bool, Spanned<Place>),
     Assign(Spanned<Place>, Spanned<Operand>),
     Return,
@@ -68,6 +68,7 @@ pub enum Instruction {
 pub enum Operand {
     Tuple(Vec<Spanned<Self>>),
     Place(Place),
+    Fn(Spanned<String>, Vec<Option<OriginId>>),
     Int(i32),
     Bool(bool),
 }
@@ -77,7 +78,6 @@ pub enum Operand {
 pub enum Place {
     Field(Box<Spanned<Self>>, Spanned<usize>),
     Deref(Box<Spanned<Self>>),
-    Global(Spanned<String>, Vec<Option<OriginId>>),
     Local(LocalId),
 }
 

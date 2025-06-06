@@ -86,7 +86,7 @@ pub trait AbstractInterpreter {
     fn visit_call(
         state: Self::Domain,
         target: &Spanned<Place>,
-        callee: &Spanned<Place>,
+        callee: &Spanned<Operand>,
         args: &[Spanned<Operand>],
     ) -> Self::Domain;
 
@@ -153,15 +153,11 @@ impl AbstractInterpreter for LivenessAnalysis {
     fn visit_call(
         mut state: Self::Domain,
         target: &Spanned<Place>,
-        callee: &Spanned<Place>,
+        callee: &Spanned<Operand>,
         args: &[Spanned<Operand>],
     ) -> Self::Domain {
-        if let Some(path) = Option::<Path>::from(&target.item) {
-            state.remove(&path);
-        }
-        if let Some(path) = Option::<Path>::from(&callee.item) {
-            state.insert(path);
-        }
+        state.remove(&Path::from(&target.item));
+        state.extend(HashSet::<Path>::from(&callee.item));
         for arg in args {
             state.extend(HashSet::<Path>::from(&arg.item));
         }
@@ -173,12 +169,8 @@ impl AbstractInterpreter for LivenessAnalysis {
         target: &Spanned<Place>,
         place: &Spanned<Place>,
     ) -> Self::Domain {
-        if let Some(path) = Option::<Path>::from(&target.item) {
-            state.remove(&path);
-        }
-        if let Some(path) = Option::<Path>::from(&place.item) {
-            state.insert(path);
-        }
+        state.remove(&Path::from(&target.item));
+        state.insert(Path::from(&place.item));
         state
     }
 
@@ -187,9 +179,7 @@ impl AbstractInterpreter for LivenessAnalysis {
         target: &Spanned<Place>,
         value: &Spanned<Operand>,
     ) -> Self::Domain {
-        if let Some(path) = Option::<Path>::from(&target.item) {
-            state.remove(&path);
-        }
+        state.remove(&Path::from(&target.item));
         state.extend(HashSet::<Path>::from(&value.item));
         state
     }
@@ -211,21 +201,20 @@ pub struct Path {
     pub fields: Vec<usize>,
 }
 
-impl From<&Place> for Option<Path> {
-    /// Compute the path in a place expression, if any.
-    /// Returns `None` for global places.
+impl From<&Place> for Path {
+    /// Compute the path in a place expression.
     fn from(value: &Place) -> Self {
         match &value {
-            Place::Field(place, index) => Option::<Path>::from(&place.item).map(|mut p| {
-                p.fields.push(index.item);
-                p
-            }),
-            Place::Deref(place) => Option::<Path>::from(&place.item),
-            Place::Global(_, _) => None,
-            Place::Local(id) => Some(Path {
+            Place::Field(place, index) => {
+                let mut path = Path::from(&place.item);
+                path.fields.push(index.item);
+                path
+            }
+            Place::Deref(place) => Path::from(&place.item),
+            Place::Local(id) => Path {
                 local: *id,
                 fields: Vec::new(),
-            }),
+            },
         }
     }
 }
@@ -238,10 +227,8 @@ impl From<&Operand> for HashSet<Path> {
                 result.extend(HashSet::<Path>::from(&operand.item));
                 result
             }),
-            Operand::Place(place) => {
-                Option::<Path>::from(place).map_or(HashSet::new(), |p| HashSet::from([p]))
-            }
-            Operand::Int(_) | Operand::Bool(_) => HashSet::new(),
+            Operand::Place(place) => HashSet::from([Path::from(place)]),
+            Operand::Fn(_, _) | Operand::Int(_) | Operand::Bool(_) => HashSet::new(),
         }
     }
 }

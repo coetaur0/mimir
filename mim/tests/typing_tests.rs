@@ -48,6 +48,14 @@ fn expressions() {
         vec![Error::InvalidCondition(Spanned::new(Type::I32, 15..16))],
     );
     check_err(
+        "fn f<'a, 'b>() {} fn main() { let f = f<'_>; }",
+        vec![Error::InvalidOriginArgNum(
+            Spanned::new("f".to_string(), 38..39),
+            2,
+            1,
+        )],
+    );
+    check_err(
         "fn f(x: i32, y: i32) {} fn main() { f(3) }",
         vec![Error::InvalidArgNum(2, Spanned::new(1, 36..37))],
     );

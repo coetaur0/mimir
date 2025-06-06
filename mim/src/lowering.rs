@@ -380,9 +380,6 @@ impl<'m> Lowerer<'m> {
             }
         }
 
-        let (place_instrs, place) = self.as_place(operand, &ty);
-        instrs.extend(place_instrs);
-
         let ty = match ty.item {
             ir::Type::Fn(_, result) => *result,
             _ => return Err(vec![Error::InvalidCallee(ty.clone())]),
@@ -392,7 +389,7 @@ impl<'m> Lowerer<'m> {
             ty: ty.clone(),
         });
         let target = Spanned::new(Place::Local(self.locals.len() - 1), span.clone());
-        instrs.push(Instruction::Call(target.clone(), place, operands));
+        instrs.push(Instruction::Call(target.clone(), operand, operands));
 
         Ok((
             instrs,
@@ -557,10 +554,7 @@ impl<'m> Lowerer<'m> {
                     let args = self.origin_args(origin_args)?;
                     let ty_instance = ty.substitute(&args);
                     Ok((
-                        Spanned::new(
-                            Operand::Place(Place::Global(name.clone(), args)),
-                            span.clone(),
-                        ),
+                        Spanned::new(Operand::Fn(name.clone(), args), span.clone()),
                         ty_instance,
                     ))
                 }

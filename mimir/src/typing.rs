@@ -168,10 +168,10 @@ impl<'m> TypeChecker<'m> {
     fn call_instr(
         &self,
         target: &Spanned<Place>,
-        callee: &Spanned<Place>,
+        callee: &Spanned<Operand>,
         args: &[Spanned<Operand>],
     ) -> Result<()> {
-        match self.place(callee)?.1.item {
+        match self.operand(callee)?.item {
             Type::Fn(params, result) => {
                 if args.len() != params.len() {
                     return Err(vec![Error::InvalidArgNum(
@@ -258,6 +258,7 @@ impl<'m> TypeChecker<'m> {
             Operand::Place(place) => Ok(self
                 .place(&Spanned::new(place.clone(), operand.span.clone()))?
                 .1),
+            Operand::Fn(name, args) => self.fn_operand(name, args),
             Operand::Int(_) => Ok(Spanned::new(Type::I32, operand.span.clone())),
             Operand::Bool(_) => Ok(Spanned::new(Type::Bool, operand.span.clone())),
         }
@@ -279,12 +280,32 @@ impl<'m> TypeChecker<'m> {
         Ok(Spanned::new(Type::Tuple(types), span.clone()))
     }
 
+    /// Type check a function operand.
+    fn fn_operand(
+        &self,
+        name: &Spanned<String>,
+        args: &[Option<OriginId>],
+    ) -> Result<Spanned<Type>> {
+        match self.module.functions.get(&name.item) {
+            Some(f) => {
+                if args.len() != f.origin_count {
+                    return Err(vec![Error::InvalidOriginArgNum(
+                        name.clone(),
+                        f.origin_count,
+                        args.len(),
+                    )]);
+                }
+                Ok(f.ty().substitute(args))
+            }
+            None => Err(vec![Error::UndefinedFunction(name.clone())]),
+        }
+    }
+
     /// Type check a place expression.
     fn place(&self, place: &Spanned<Place>) -> Result<(bool, Spanned<Type>)> {
         match &place.item {
             Place::Field(place, index) => self.index_place(place, index),
             Place::Deref(place) => self.deref_place(place),
-            Place::Global(name, args) => self.global_place(name, args),
             Place::Local(id) => self.local_place(*id, &place.span),
         }
     }
@@ -310,27 +331,6 @@ impl<'m> TypeChecker<'m> {
         match ty.item {
             Type::Ref(_, is_mut, ty) => Ok((is_mut, *ty)),
             _ => Err(vec![Error::InvalidDeref(ty)]),
-        }
-    }
-
-    /// Type check a global place expression.
-    fn global_place(
-        &self,
-        name: &Spanned<String>,
-        args: &[Option<OriginId>],
-    ) -> Result<(bool, Spanned<Type>)> {
-        match self.module.functions.get(&name.item) {
-            Some(f) => {
-                if args.len() != f.origin_count {
-                    return Err(vec![Error::InvalidOriginArgNum(
-                        name.clone(),
-                        f.origin_count,
-                        args.len(),
-                    )]);
-                }
-                Ok((false, f.ty().substitute(args)))
-            }
-            None => Err(vec![Error::UndefinedGlobal(name.clone())]),
         }
     }
 

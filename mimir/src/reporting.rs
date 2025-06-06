@@ -44,7 +44,7 @@ pub enum Error {
     UnassignableExpr(Span),
     UnauthorizedBorrow(Span),
     UnclosedDelimiter(Spanned<String>, String, Spanned<String>),
-    UndefinedGlobal(Spanned<String>),
+    UndefinedFunction(Spanned<String>),
     UndefinedLocal(Span),
     UndefinedName(Spanned<String>),
     UndefinedOrigin(Span),
@@ -239,7 +239,7 @@ impl Error {
                             .with_color(Color::Red),
                     )
             }
-            Error::UndefinedGlobal(name) => {
+            Error::UndefinedFunction(name) => {
                 Report::build(ReportKind::Error, (path, name.span.clone()))
                     .with_code(16)
                     .with_message("Undefined function.")
