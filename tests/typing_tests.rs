@@ -1,6 +1,7 @@
-use mim::{lowering::lower, parsing::parse};
 use mimir::{
     ir::Type,
+    lowering::lower,
+    parsing::parse,
     reporting::{Error, Spanned},
     typing::check,
 };
@@ -11,6 +12,7 @@ fn functions() {
     check_ok(
         "fn f<'a, 'b>(x: &'a i32, f: fn(&'a i32, &'a i32) -> &'a i32) -> &'a i32 { f<'a>(x) }",
     );
+
     check_err("fn f(r: &i32) {}", vec![Error::OriginNeeded(9..12)]);
     check_err(
         "fn f() -> bool { 42 }",
@@ -25,11 +27,18 @@ fn functions() {
 fn statements() {
     check_ok("fn f() -> i32 { let x: i32; x = 42; g(); return x; x } fn g() {}");
     check_ok("fn loop() { let mut cond = true; while cond { cond = false; } }");
+
     check_err(
         "fn f() -> i32 { return false }",
         vec![
             Error::IncompatibleTypes(Type::I32, Spanned::new(Type::Bool, 23..28)),
-            Error::IncompatibleTypes(Type::I32, Spanned::new(Type::Tuple(Vec::new()), 30..30)),
+            Error::IncompatibleTypes(
+                Type::I32,
+                Spanned {
+                    item: Type::Unit,
+                    span: 30..30,
+                },
+            ),
         ],
     );
     check_err(
@@ -41,8 +50,9 @@ fn statements() {
 #[test]
 fn expressions() {
     check_ok(
-        "fn main() { let x = 42; let r = &x; if g() { *r } else { (0, 1).1 }; } fn g() -> bool { true }",
+        "fn main() { let x = 42; let r = &x; if g() { *r } else { 1 }; } fn g() -> bool { true }",
     );
+
     check_err(
         "fn main() { if 0 { 1 } else { 2 }; }",
         vec![Error::InvalidCondition(Spanned::new(Type::I32, 15..16))],
@@ -84,7 +94,7 @@ fn expressions() {
 
 #[test]
 fn types() {
-    check_ok("fn f<'a, 'b>(x: &'a mut i32, f: fn(&'b i32) -> i32, t: (bool, i32)) -> i32 { true }");
+    check_ok("fn f<'a, 'b>(x: &'a mut i32, f: fn(&'b i32) -> (), t: bool) -> i32 { true }");
 }
 
 /// Check that type checking the declarations in a source string succeeds.

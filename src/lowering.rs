@@ -2,12 +2,11 @@
 
 use std::{collections::HashMap, mem};
 
-use mimir::{
+use crate::{
+    ast::{self, Expr, Parameter, Stmt},
     ir::{self, Local, LocalId, Operand, OriginId, Place, Statement},
     reporting::{Error, Result, Span, Spanned},
 };
-
-use crate::ast::{self, Expr, Parameter, Stmt};
 
 /// Lower an AST module to its IR representation.
 pub fn lower(module: &ast::Module) -> Result<ir::Module> {
@@ -136,9 +135,9 @@ impl<'m> Lowerer<'m> {
         match &ty.item {
             ast::Type::Fn(params, result) => self.fn_ty(params, result, &ty.span),
             ast::Type::Ref(origin, mutable, r_ty) => self.ref_ty(origin, *mutable, r_ty, &ty.span),
-            ast::Type::Tuple(elems) => self.tuple_ty(elems, &ty.span),
             ast::Type::I32 => Ok(Spanned::new(ir::Type::I32, ty.span.clone())),
             ast::Type::Bool => Ok(Spanned::new(ir::Type::Bool, ty.span.clone())),
+            ast::Type::Unit => Ok(Spanned::new(ir::Type::Unit, ty.span.clone())),
         }
     }
 
@@ -195,24 +194,6 @@ impl<'m> Lowerer<'m> {
             ir::Type::Ref(origin_id, mutable, Box::new(ir_ty)),
             span.clone(),
         ))
-    }
-
-    /// Lower a tuple type to its IR representation.
-    fn tuple_ty(&self, elems: &[Spanned<ast::Type>], span: &Span) -> Result<Spanned<ir::Type>> {
-        let mut tys = Vec::new();
-        let mut errors = Vec::new();
-
-        for ty in elems {
-            match self.ty(ty) {
-                Ok(ty) => tys.push(ty),
-                Err(errs) => errors.extend(errs),
-            }
-        }
-
-        if !errors.is_empty() {
-            return Err(errors);
-        }
-        Ok(Spanned::new(ir::Type::Tuple(tys), span.clone()))
     }
 
     /// Lower an AST statement to its IR representation.
@@ -312,9 +293,7 @@ impl<'m> Lowerer<'m> {
             Expr::If(cond, then, els) => self.if_expr(cond, then, els, span),
             Expr::Call(callee, args) => self.call_expr(callee, args, span),
             Expr::Borrow(mutable, place) => self.borrow_expr(*mutable, place, span),
-            Expr::Field(place, index) => self.field_expr(place, index, span),
             Expr::Deref(place) => self.deref_expr(place, span),
-            Expr::Tuple(elems) => self.tuple_expr(elems, span),
             Expr::Block(block) => self.block_expr(block),
             Expr::Name(name, origin_args) => {
                 let (op, ty) = self.name_expr(name, origin_args, span)?;
@@ -329,6 +308,11 @@ impl<'m> Lowerer<'m> {
                 Vec::new(),
                 Spanned::new(Operand::Bool(*value), span.clone()),
                 Spanned::new(ir::Type::Bool, span.clone()),
+            )),
+            Expr::Unit => Ok((
+                Vec::new(),
+                Spanned::new(Operand::Unit, span.clone()),
+                Spanned::new(ir::Type::Unit, span.clone()),
             )),
         }
     }
@@ -425,36 +409,6 @@ impl<'m> Lowerer<'m> {
         ))
     }
 
-    /// Lower an AST field expression to its IR representation and type.
-    fn field_expr(
-        &mut self,
-        expr: &'m Spanned<Expr>,
-        index: &Spanned<usize>,
-        span: &Span,
-    ) -> Result<(ir::Block, Spanned<Operand>, Spanned<ir::Type>)> {
-        let (stmts, operand, ty) = self.expr(&expr.item, &expr.span)?;
-        match (operand.item, &ty.item) {
-            (Operand::Place(p), ir::Type::Tuple(tys)) => {
-                if index.item < tys.len() {
-                    Ok((
-                        stmts,
-                        Spanned::new(
-                            Operand::Place(Place::Field(
-                                Box::new(Spanned::new(p, expr.span.clone())),
-                                index.clone(),
-                            )),
-                            span.clone(),
-                        ),
-                        tys[index.item].clone(),
-                    ))
-                } else {
-                    Err(vec![Error::InvalidField(ty.clone(), index.clone())])
-                }
-            }
-            _ => Err(vec![Error::InvalidField(ty.clone(), index.clone())]),
-        }
-    }
-
     /// Lower an AST dereference expression to its IR representation and type.
     fn deref_expr(
         &mut self,
@@ -473,38 +427,6 @@ impl<'m> Lowerer<'m> {
             )),
             _ => Err(vec![Error::InvalidDeref(ty.clone())]),
         }
-    }
-
-    /// Lower an AST tuple expression to its IR representation and type.
-    fn tuple_expr(
-        &mut self,
-        elems: &'m [Spanned<Expr>],
-        span: &Span,
-    ) -> Result<(ir::Block, Spanned<Operand>, Spanned<ir::Type>)> {
-        let mut stmts = Vec::new();
-        let mut operands = Vec::new();
-        let mut tys = Vec::new();
-        let mut errors = Vec::new();
-
-        for elem in elems {
-            self.expr(&elem.item, &elem.span).map_or_else(
-                |errs| errors.extend(errs),
-                |(s, o, t)| {
-                    stmts.extend(s);
-                    operands.push(o);
-                    tys.push(t);
-                },
-            );
-        }
-
-        if !errors.is_empty() {
-            return Err(errors);
-        }
-        Ok((
-            stmts,
-            Spanned::new(Operand::Tuple(operands), span.clone()),
-            Spanned::new(ir::Type::Tuple(tys), span.clone()),
-        ))
     }
 
     /// Lower an AST block expression to its IR representation and type.

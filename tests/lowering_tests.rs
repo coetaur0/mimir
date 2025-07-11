@@ -1,6 +1,7 @@
-use mim::{lowering::lower, parsing::parse};
 use mimir::{
     ir::Type,
+    lowering::lower,
+    parsing::parse,
     reporting::{Error, Spanned},
 };
 
@@ -43,18 +44,11 @@ fn statements() {
 #[test]
 fn expressions() {
     check_ok(
-        "fn main() { let x = 42; let r = &x; if g() { *r } else { (0, 1).1 }; } fn g() -> bool { true }",
+        "fn main() { let x = 42; let r = &x; if g() { *r } else { 1 }; } fn g() -> bool { true }",
     );
     check_err(
         "fn main() { 3(); }",
         vec![Error::InvalidCallee(Spanned::new(Type::I32, 12..13))],
-    );
-    check_err(
-        "fn main() { 4.0 }",
-        vec![Error::InvalidField(
-            Spanned::new(Type::I32, 12..13),
-            Spanned::new(0, 14..15),
-        )],
     );
     check_err(
         "fn main() { *true; }",
@@ -72,7 +66,7 @@ fn expressions() {
 
 #[test]
 fn types() {
-    check_ok("fn f<'a, 'b>(x: &'a mut i32, f: fn(&'b i32) -> i32, t: (bool, i32)) -> i32 { true }");
+    check_ok("fn f<'a, 'b>(x: &'a mut i32, f: fn(&'b i32) -> (), t: bool) -> i32 { true }");
     check_err("fn f(x: &'a i32) {}", vec![Error::UndefinedOrigin(9..11)]);
 }
 

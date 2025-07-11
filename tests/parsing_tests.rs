@@ -1,9 +1,12 @@
-use mim::parsing::*;
-use mimir::reporting::{Error, Spanned};
+use mimir::{
+    parsing::*,
+    reporting::{Error, Spanned},
+};
 
 #[test]
 fn functions() {
     check_ok("fn f<'a>(r: &'a mut i32) -> i32 { *r } fn main() { f<'_>(&42) }");
+
     check_err(
         "fn f() {} fn f() {}",
         vec![Error::DuplicateFunction(Spanned::new(
@@ -37,6 +40,21 @@ fn functions() {
 fn statements() {
     check_ok("fn main() { let x: i32 = 42; let b: bool; b = true; let c = 1; g(); return b }");
     check_ok("fn loop() { let mut cond = true; while cond { cond = false; } }");
+
+    check_err(
+        "fn main() { while let x = 42 {}; }",
+        vec![Error::UnexpectedSymbol(
+            "an expression".to_string(),
+            Spanned::new(Token::LetKw.to_string(), 18..21),
+        )],
+    );
+    check_err(
+        "fn main() { while true &x; }",
+        vec![Error::UnexpectedSymbol(
+            "a '{'".to_string(),
+            Spanned::new(Token::Ampersand.to_string(), 23..24),
+        )],
+    );
     check_err(
         "fn main() { let x i32; }",
         vec![Error::UnclosedDelimiter(
@@ -76,7 +94,8 @@ fn statements() {
 
 #[test]
 fn expressions() {
-    check_ok("fn main() { if b() { *r } else if c { &mut v } else { (0, false).0 } }");
+    check_ok("fn main() -> i32 { if b() { *r } else if c { &mut v } else { false }; 42 }");
+
     check_err(
         "fn main() { if true 32 else false }",
         vec![Error::UnexpectedSymbol(
@@ -100,17 +119,18 @@ fn expressions() {
         )],
     );
     check_err(
-        "fn main() { t.true }",
+        "fn main() { * }",
         vec![Error::UnexpectedSymbol(
-            "an integer literal".to_string(),
-            Spanned::new(Token::TrueLit.to_string(), 14..18),
+            "an expression".to_string(),
+            Spanned::new(Token::RBrace.to_string(), 14..15),
         )],
     );
 }
 
 #[test]
 fn types() {
-    check_ok("fn f<'a, 'b>(x: &'a i32, f: fn(i32, i32) -> (bool, bool)) -> bool { }");
+    check_ok("fn f<'a, 'b>(x: &'a i32, f: fn(i32, i32) -> bool) -> () { }");
+
     check_err(
         "fn f(x: 3) {}",
         vec![Error::UnexpectedSymbol(
@@ -129,11 +149,23 @@ fn types() {
         )],
     );
     check_err(
-        "fn f() -> (i32 {}",
-        vec![Error::UnclosedDelimiter(
-            Spanned::new("(".to_string(), 10..11),
-            Token::RParen.to_string(),
-            Spanned::new(Token::LBrace.to_string(), 15..16),
+        "fn f() -> {}",
+        vec![Error::UnexpectedSymbol(
+            "a type expression".to_string(),
+            Spanned {
+                item: Token::LBrace.to_string(),
+                span: 10..11,
+            },
+        )],
+    );
+    check_err(
+        "fn f(x: &) {}",
+        vec![Error::UnexpectedSymbol(
+            "a type expression".to_string(),
+            Spanned {
+                item: Token::RParen.to_string(),
+                span: 9..10,
+            },
         )],
     );
 }

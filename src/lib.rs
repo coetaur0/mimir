@@ -1,10 +1,13 @@
 use std::{fs, process};
 
-use mimir::{analysis, reporting::Error, typing};
+use crate::reporting::Error;
 
 pub mod ast;
+pub mod ir;
 pub mod lowering;
 pub mod parsing;
+pub mod reporting;
+pub mod typing;
 
 /// Compile the module in a file at some `path`.
 pub fn compile(path: &str) {
@@ -20,10 +23,6 @@ pub fn compile(path: &str) {
                     typing::check(&ir).unwrap_or_else(|errors| print_errors(&errors, path, &src));
                     for (name, function) in ir.functions {
                         println!("{}: {:#?}", name, function);
-                        let sets = analysis::liveness(&function.body);
-                        for set in sets.iter().rev() {
-                            println!("    {:?}", set);
-                        }
                     }
                 })
                 .unwrap_or_else(|errors| print_errors(&errors, path, &src))

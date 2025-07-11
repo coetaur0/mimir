@@ -3,9 +3,11 @@
 use std::{collections::HashMap, fmt};
 
 use logos::{Lexer, Logos};
-use mimir::reporting::{Error, Result, Span, Spanned};
 
-use crate::ast::*;
+use crate::{
+    ast::*,
+    reporting::{Error, Result, Span, Spanned},
+};
 
 /// Parse a Mim module.
 pub fn parse(src: &str) -> Result<Module> {
@@ -72,8 +74,6 @@ pub enum Token {
     Colon,
     #[token(";")]
     Semicolon,
-    #[token(".")]
-    Dot,
     #[token("=")]
     Assign,
     #[token("&")]
@@ -114,7 +114,6 @@ impl fmt::Display for Token {
             Token::Comma => write!(f, "a ','"),
             Token::Colon => write!(f, "a ':'"),
             Token::Semicolon => write!(f, "a ';'"),
-            Token::Dot => write!(f, "a '.'"),
             Token::Assign => write!(f, "a '='"),
             Token::Ampersand => write!(f, "a '&'"),
             Token::Star => write!(f, "a '*'"),
@@ -193,7 +192,7 @@ impl<'src> Parser<'src> {
             self.advance();
             self.ty()?
         } else {
-            Spanned::new(Type::Tuple(Vec::new()), self.span())
+            Spanned::new(Type::Unit, self.span())
         };
         let body = self.block()?.item;
         Ok((
@@ -261,7 +260,7 @@ impl<'src> Parser<'src> {
         }
         let result = match result {
             Some(expr) => expr,
-            None => Spanned::new(Expr::Tuple(Vec::new()), end..end),
+            None => Spanned::new(Expr::Unit, end..end),
         };
         Ok(Spanned::new(Block { stmts, result }, start..end))
     }
@@ -356,12 +355,12 @@ impl<'src> Parser<'src> {
             let span = start..expr.span.end;
             Ok(Spanned::new(Expr::Deref(Box::new(expr)), span))
         } else {
-            self.path_expr()
+            self.call_expr()
         }
     }
 
-    /// Parse an optional sequence of call expressions or field accesses.
-    fn path_expr(&mut self) -> Result<Spanned<Expr>> {
+    /// Parse an optional sequence of call expressions.
+    fn call_expr(&mut self) -> Result<Spanned<Expr>> {
         let mut expr = self.primary_expr()?;
         loop {
             match self.token {
@@ -373,20 +372,6 @@ impl<'src> Parser<'src> {
                     )?;
                     let span = expr.span.start..args.span.end;
                     expr = Spanned::new(Expr::Call(Box::new(expr), args.item), span);
-                }
-                Token::Dot => {
-                    self.advance();
-                    let index = self.expect(Token::IntLit)?;
-                    match index.item.parse::<usize>() {
-                        Ok(idx) => {
-                            let span = expr.span.start..index.span.end;
-                            expr = Spanned::new(
-                                Expr::Field(Box::new(expr), Spanned::new(idx, index.span)),
-                                span,
-                            );
-                        }
-                        Err(_) => return Err(self.expected("a valid field index".to_string())),
-                    }
                 }
                 _ => break,
             }
@@ -432,7 +417,7 @@ impl<'src> Parser<'src> {
                 Spanned::new(Expr::Block(Box::new(block.item)), block.span)
             }
         } else {
-            Spanned::new(Expr::Tuple(Vec::new()), self.lexer.span())
+            Spanned::new(Expr::Unit, self.lexer.span())
         };
         let span = start..els.span.end;
         Ok(Spanned::new(
@@ -441,18 +426,15 @@ impl<'src> Parser<'src> {
         ))
     }
 
-    /// Parse a tuple or a parenthesized expression.
+    /// Parse a parenthesized or unit expression.
     fn paren_expr(&mut self) -> Result<Spanned<Expr>> {
-        let mut elems = self.delimited(
-            |p| p.list(Self::expr, Token::Comma, Token::RParen),
-            Token::LParen,
-            Token::RParen,
-        )?;
-        if elems.item.len() == 1 {
-            Ok(elems.item.pop().unwrap())
-        } else {
-            Ok(Spanned::new(Expr::Tuple(elems.item), elems.span))
+        let start = self.consume().span.start;
+        if self.peek(Token::RParen) {
+            return Ok(Spanned::new(Expr::Unit, start..self.consume().span.end));
         }
+        let expr = self.expr()?;
+        self.expect(Token::RParen)?;
+        Ok(expr)
     }
 
     /// Parse a borrow expression.
@@ -547,18 +529,15 @@ impl<'src> Parser<'src> {
         Ok(Spanned::new(Type::Ref(origin, mutable, Box::new(ty)), span))
     }
 
-    /// Parse a parenthesized or tuple type expression.
+    /// Parse a parenthesized or unit type expression.
     fn paren_ty(&mut self) -> Result<Spanned<Type>> {
-        let mut elems = self.delimited(
-            |p| p.list(Self::ty, Token::Comma, Token::RParen),
-            Token::LParen,
-            Token::RParen,
-        )?;
-        if elems.item.len() == 1 {
-            Ok(elems.item.pop().unwrap())
-        } else {
-            Ok(Spanned::new(Type::Tuple(elems.item), elems.span))
+        let start = self.consume().span.start;
+        if self.peek(Token::RParen) {
+            return Ok(Spanned::new(Type::Unit, start..self.consume().span.end));
         }
+        let ty = self.ty()?;
+        self.expect(Token::RParen)?;
+        Ok(ty)
     }
 
     /// Parse an optional mutability marker.

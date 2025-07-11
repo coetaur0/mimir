@@ -71,13 +71,13 @@ impl<'m> TypeChecker<'m> {
                 }
                 self.ty(ty, with_origins)
             }
-            Type::Tuple(elems) => self.tuple_ty(elems, with_origins),
             Type::I32 => Ok(()),
             Type::Bool => Ok(()),
+            Type::Unit => Ok(()),
         }
     }
 
-    /// Check if a function type is well formed.
+    /// Check if a function type is well-formed.
     fn fn_ty(&self, params: &Vec<Spanned<Type>>, result: &Spanned<Type>) -> Result<()> {
         let mut errors = Vec::new();
 
@@ -252,30 +252,14 @@ impl<'m> TypeChecker<'m> {
     /// Type check a statement operand.
     fn operand(&self, operand: &Spanned<Operand>) -> Result<Spanned<Type>> {
         match &operand.item {
-            Operand::Tuple(elems) => self.tuple_operand(elems, &operand.span),
             Operand::Place(place) => Ok(self
                 .place(&Spanned::new(place.clone(), operand.span.clone()))?
                 .1),
             Operand::Fn(name, args) => self.fn_operand(name, args),
             Operand::Int(_) => Ok(Spanned::new(Type::I32, operand.span.clone())),
             Operand::Bool(_) => Ok(Spanned::new(Type::Bool, operand.span.clone())),
+            Operand::Unit => Ok(Spanned::new(Type::Unit, operand.span.clone())),
         }
-    }
-
-    /// Type check a tuple operand.
-    fn tuple_operand(&self, elems: &Vec<Spanned<Operand>>, span: &Span) -> Result<Spanned<Type>> {
-        let mut types = Vec::new();
-        let mut errors = Vec::new();
-        for op in elems {
-            match self.operand(op) {
-                Ok(ty) => types.push(ty),
-                Err(errs) => errors.extend(errs),
-            }
-        }
-        if !errors.is_empty() {
-            return Err(errors);
-        }
-        Ok(Spanned::new(Type::Tuple(types), span.clone()))
     }
 
     /// Type check a function operand.
@@ -302,24 +286,8 @@ impl<'m> TypeChecker<'m> {
     /// Type check a place expression.
     fn place(&self, place: &Spanned<Place>) -> Result<(bool, Spanned<Type>)> {
         match &place.item {
-            Place::Field(place, index) => self.index_place(place, index),
             Place::Deref(place) => self.deref_place(place),
             Place::Local(id) => self.local_place(*id, &place.span),
-        }
-    }
-
-    /// Type check a place index expression.
-    fn index_place(
-        &self,
-        place: &Spanned<Place>,
-        index: &Spanned<usize>,
-    ) -> Result<(bool, Spanned<Type>)> {
-        let (is_mut, ty) = self.place(place)?;
-        match ty.item {
-            Type::Tuple(elems) if index.item < elems.len() => {
-                Ok((is_mut, elems[index.item].clone()))
-            }
-            _ => Err(vec![Error::InvalidField(ty, index.clone())]),
         }
     }
 

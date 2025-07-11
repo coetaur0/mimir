@@ -115,18 +115,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "mim"
-version = "0.1.0"
-dependencies = [
- "logos",
- "mimir",
-]
-
-[[package]]
 name = "mimir"
 version = "0.1.0"
 dependencies = [
  "ariadne",
+ "logos",
 ]
 
 [[package]]

@@ -66,17 +66,16 @@ pub enum Statement {
 /// An instruction operand.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Operand {
-    Tuple(Vec<Spanned<Self>>),
     Place(Place),
     Fn(Spanned<String>, Vec<Option<OriginId>>),
     Int(i32),
     Bool(bool),
+    Unit,
 }
 
 /// A place expression.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Place {
-    Field(Box<Spanned<Self>>, Spanned<usize>),
     Deref(Box<Spanned<Self>>),
     Local(LocalId),
 }
@@ -86,9 +85,9 @@ pub enum Place {
 pub enum Type {
     Fn(Vec<Spanned<Self>>, Box<Spanned<Self>>),
     Ref(Option<OriginId>, bool, Box<Spanned<Self>>),
-    Tuple(Vec<Spanned<Self>>),
     I32,
     Bool,
+    Unit,
 }
 
 impl Spanned<Type> {
@@ -103,11 +102,7 @@ impl Spanned<Type> {
             (Type::Ref(l_origin, l_mut, l_ty), Type::Ref(r_origin, r_mut, r_ty)) => {
                 l_origin == r_origin && l_mut == r_mut && l_ty.equiv_to(r_ty)
             }
-            (Type::Tuple(l_elems), Type::Tuple(r_elems)) => {
-                l_elems.len() == r_elems.len()
-                    && l_elems.iter().zip(r_elems).all(|(l, r)| l.equiv_to(r))
-            }
-            (Type::I32, Type::I32) | (Type::Bool, Type::Bool) => true,
+            (Type::I32, Type::I32) | (Type::Bool, Type::Bool) | (Type::Unit, Type::Unit) => true,
             _ => false,
         }
     }
@@ -126,11 +121,7 @@ impl Spanned<Type> {
                     && (*l_mut || !*r_mut)
                     && l_ty.subtype_of(r_ty)
             }
-            (Type::Tuple(l_elems), Type::Tuple(r_elems)) => {
-                l_elems.len() == r_elems.len()
-                    && l_elems.iter().zip(r_elems).all(|(l, r)| l.subtype_of(r))
-            }
-            (l_ty, r_ty) => l_ty == r_ty,
+            (_, _) => self.equiv_to(other),
         }
     }
 
@@ -159,11 +150,7 @@ impl Spanned<Type> {
                     self.span.clone(),
                 )
             }
-            Type::Tuple(elems) => Spanned::new(
-                Type::Tuple(elems.iter().map(|e| e.substitute(subst)).collect()),
-                self.span.clone(),
-            ),
-            Type::I32 | Type::Bool => self.clone(),
+            Type::I32 | Type::Bool | Type::Unit => self.clone(),
         }
     }
 }
@@ -183,12 +170,9 @@ impl fmt::Display for Type {
                     write!(f, "&{}{}", mutability, ty.item)
                 }
             }
-            Type::Tuple(elems) => {
-                let elems: Vec<String> = elems.iter().map(|p| p.item.to_string()).collect();
-                write!(f, "({})", elems.join(", "))
-            }
             Type::I32 => write!(f, "i32"),
             Type::Bool => write!(f, "bool"),
+            Type::Unit => write!(f, "()"),
         }
     }
 }

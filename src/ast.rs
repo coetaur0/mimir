@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use mimir::reporting::Spanned;
+use crate::reporting::Spanned;
 
 /// A module.
 #[derive(Debug)]
@@ -73,13 +73,12 @@ pub enum Expr {
     If(Box<Spanned<Self>>, Box<Spanned<Block>>, Box<Spanned<Self>>),
     Call(Box<Spanned<Self>>, Vec<Spanned<Self>>),
     Borrow(bool, Box<Spanned<Self>>),
-    Field(Box<Spanned<Self>>, Spanned<usize>),
     Deref(Box<Spanned<Self>>),
-    Tuple(Vec<Spanned<Self>>),
     Block(Box<Block>),
     Name(Spanned<String>, Vec<Option<Spanned<String>>>),
     Int(i32),
     Bool(bool),
+    Unit,
 }
 
 /// A type expression.
@@ -87,7 +86,7 @@ pub enum Expr {
 pub enum Type {
     Fn(Vec<Spanned<Self>>, Box<Spanned<Self>>),
     Ref(Option<Spanned<String>>, bool, Box<Spanned<Self>>),
-    Tuple(Vec<Spanned<Self>>),
     I32,
     Bool,
+    Unit,
 }
